@@ -39,7 +39,7 @@
     "autoprefixer": "^10.4.21",
     "electron": "^38.0.0",
     "electron-builder": "^26.0.0",
-    "esbuild": "^0.25.0",
+    "esbuild": "^0.28.2",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.21.0",
     "typescript": "^7.0.2"
