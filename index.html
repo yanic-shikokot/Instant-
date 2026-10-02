@@ -54,6 +54,18 @@ button{cursor:pointer}
 }
 </style>
 <script src="auth-config.js"></script>
+<script>
+// Production fallback: guarantees the public Supabase client configuration is
+// available even if a static-host cache temporarily serves index.html without
+// the external auth-config.js file. Publishable keys are safe for client code.
+if (!window.FIELDINSPECT_AUTH?.SUPABASE_URL || !window.FIELDINSPECT_AUTH?.SUPABASE_PUBLISHABLE_KEY) {
+  window.FIELDINSPECT_AUTH = {
+    SUPABASE_URL: "https://aynlfxquofvlnthxuqcl.supabase.co",
+    SUPABASE_PUBLISHABLE_KEY: "sb_publishable_N2gR3sQb0PE18MsEN0Htbg_qn6fQooJ",
+    AUTH_REDIRECT_URL: "https://radiant-granita-8f2db2.netlify.app/"
+  };
+}
+</script>
 </head>
 <body>
 <div id="app" class="min-h-screen flex flex-col">
