@@ -95,9 +95,11 @@ Deno.serve(async (req) => {
   const plan = PLANS[planKey];
   const shortcode = Deno.env.get("MPESA_SHORTCODE");
   const passkey = Deno.env.get("MPESA_PASSKEY");
-  const callbackUrl = Deno.env.get("MPESA_CALLBACK_URL");
+  const callbackUrl =
+    Deno.env.get("MPESA_CALLBACK_URL") ||
+    "https://aynlfxquofvlnthxuqcl.supabase.co/functions/v1/mpesa-callback";
 
-  if (!shortcode || !passkey || !callbackUrl) {
+  if (!shortcode || !passkey) {
     return json({ error: "M-Pesa server configuration is incomplete" }, 500);
   }
 
@@ -134,12 +136,15 @@ Deno.serve(async (req) => {
     }, 502);
   }
 
-  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  if (!serviceRoleKey) {
-    return json({ error: "Supabase service role key is not configured" }, 500);
+  // Supabase Edge Functions expose the current server secret key through
+  // SUPABASE_SECRET_KEYS. Keep this key server-side only.
+  const secretKeys = JSON.parse(Deno.env.get("SUPABASE_SECRET_KEYS") || "{}");
+  const secretKey = secretKeys.default;
+  if (!secretKey) {
+    return json({ error: "Supabase server secret key is not configured" }, 500);
   }
 
-  const admin = createClient(supabaseUrl, serviceRoleKey);
+  const admin = createClient(supabaseUrl, secretKey);
 
   const { data: subscription } = await admin
     .from("subscriptions")
