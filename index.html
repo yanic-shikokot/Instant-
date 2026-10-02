@@ -694,8 +694,8 @@ window.addEventListener('DOMContentLoaded',init);
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 
 const cfg = window.FIELDINSPECT_AUTH || {};
-const supabaseReady = Boolean(cfg.SUPABASE_URL && cfg.SUPABASE_ANON_KEY);
-const supabase = supabaseReady ? createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY) : null;
+const supabaseReady = Boolean(cfg.SUPABASE_URL && cfg.SUPABASE_PUBLISHABLE_KEY);
+const supabase = supabaseReady ? createClient(cfg.SUPABASE_URL, cfg.SUPABASE_PUBLISHABLE_KEY) : null;
 let authUser = null;
 let authMode = 'login';
 
