@@ -532,8 +532,30 @@ function openPaywall(tab='plans'){
 function closePaywall(){document.getElementById('paywall').classList.add('hidden');document.body.classList.remove('overflow-hidden')}
 function persist(){
  clearTimeout(saveTimer);
- saveTimer=setTimeout(()=>{localStorage.setItem(STORAGE+':draft',JSON.stringify(state));setSaveStatus('Saved');},250);
  setSaveStatus('Saving…');
+ saveTimer=setTimeout(()=>{
+  try{
+   localStorage.setItem(STORAGE+':draft',JSON.stringify(state));
+   setSaveStatus('Saved');
+  }catch(e){
+   console.error('FieldInspect draft save failed:',e);
+   setSaveStatus('Save failed');
+   toast('Draft could not be saved locally. Check available browser storage.');
+  }
+ },250);
+}
+function persistNow(){
+ clearTimeout(saveTimer);
+ try{
+  localStorage.setItem(STORAGE+':draft',JSON.stringify(state));
+  setSaveStatus('Saved');
+  return true;
+ }catch(e){
+  console.error('FieldInspect immediate draft save failed:',e);
+  setSaveStatus('Save failed');
+  toast('Draft could not be saved locally. Check available browser storage.');
+  return false;
+ }
 }
 function setSaveStatus(t){
  const el=document.getElementById('saveStatus'); if(el){el.textContent=t;el.className='text-[10px] font-bold '+(t==='Saved'?'text-emerald-700 bg-emerald-50 border border-emerald-200':'text-amber-700 bg-amber-50 border border-amber-200')+' rounded-full px-2 py-1';}
@@ -553,9 +575,26 @@ function init(){
 }
 function bindFields(){
  const map={reportId:['meta','reportId'],inspectionDate:['meta','inspectionDate'],projectName:['meta','projectName'],inspectorName:['meta','inspectorName'],clientName:['meta','clientName'],siteLocation:['meta','siteLocation'],conditions:['meta','conditions'],overallStatus:['meta','overallStatus']};
- Object.entries(map).forEach(([id,path])=>{const el=document.getElementById(id);el.value=state[path[0]][path[1]]||'';el.addEventListener('input',()=>{state[path[0]][path[1]]=el.value;persist();renderReport()})});
- document.getElementById('fontSelect').value=state.font;
- document.getElementById('templateSelect').addEventListener('change',applyTemplate);
+ Object.entries(map).forEach(([id,path])=>{
+  const el=document.getElementById(id);
+  if(!el)return;
+  el.value=state[path[0]][path[1]]||'';
+  if(el.dataset.fieldBound!=='1'){
+   el.addEventListener('input',()=>{
+    state[path[0]][path[1]]=el.value;
+    persist();
+    renderReport();
+   });
+   el.dataset.fieldBound='1';
+  }
+ });
+ const font=document.getElementById('fontSelect');
+ if(font)font.value=state.font;
+ const template=document.getElementById('templateSelect');
+ if(template && template.dataset.templateBound!=='1'){
+  template.addEventListener('change',applyTemplate);
+  template.dataset.templateBound='1';
+ }
 }
 function renderThemes(){
  const wrap=document.getElementById('themeButtons');
@@ -768,25 +807,41 @@ window.addEventListener('DOMContentLoaded',init);
 
  function readHistory(){
   try{
-   const value=JSON.parse(localStorage.getItem(HISTORY_KEY));
+   const value=JSON.parse(localStorage.getItem(HISTORY_KEY)||'[]');
    return Array.isArray(value)?value:[];
-  }catch(e){return []}
+  }catch(e){
+   console.error('FieldInspect history read failed:',e);
+   return [];
+  }
  }
  function writeHistory(list){
-  localStorage.setItem(HISTORY_KEY,JSON.stringify(list.slice(0,100)));
+  try{
+   localStorage.setItem(HISTORY_KEY,JSON.stringify(list.slice(0,100)));
+   return true;
+  }catch(e){
+   console.error('FieldInspect history write failed:',e);
+   toast('Inspection history could not be saved. Browser storage may be full.');
+   return false;
+  }
  }
- function snapshotState(){
-  return JSON.parse(JSON.stringify(state));
- }
+ function snapshotState(){return JSON.parse(JSON.stringify(state));}
+
  window.saveCurrentToHistory=function(){
   const copy=snapshotState();
   const now=new Date().toISOString();
   const id=copy.meta.reportId||('REP-'+now.replace(/\D/g,'').slice(0,14));
+  copy.meta.reportId=id;
+  state.meta.reportId=id;
   const list=readHistory();
   const existingIndex=list.findIndex(x=>x.reportId===id);
-  if(existingIndex<0 && typeof canCreateInspection==='function' && !canCreateInspection()){openPaywall('plans');toast('Your inspection allowance has been reached. Choose a plan to continue.');return;}
+  if(existingIndex<0 && typeof canCreateInspection==='function' && !canCreateInspection()){
+   openPaywall('plans');
+   toast('Your inspection allowance has been reached. Choose a plan to continue.');
+   return {saved:false,created:false};
+  }
+  const previous=existingIndex>=0?list[existingIndex]:null;
   const record={
-   id:existingIndex>=0?list[existingIndex].id:crypto.randomUUID(),
+   id:previous?.id||crypto.randomUUID(),
    reportId:id,
    projectName:copy.meta.projectName||'Untitled inspection',
    clientName:copy.meta.clientName||'',
@@ -794,13 +849,20 @@ window.addEventListener('DOMContentLoaded',init);
    siteLocation:copy.meta.siteLocation||'',
    inspectionDate:copy.meta.inspectionDate||'',
    overallStatus:copy.meta.overallStatus||'Attention required',
+   status:previous?.status||'completed',
+   createdAt:previous?.createdAt||now,
    updatedAt:now,
    state:copy
   };
-  if(existingIndex>=0) list[existingIndex]=record; else { list.unshift(record); if(typeof recordInspectionUsage==='function')recordInspectionUsage(); }
-  writeHistory(list);
+  const next=list.slice();
+  const created=existingIndex<0;
+  if(created)next.unshift(record);else next[existingIndex]=record;
+  if(!writeHistory(next))return {saved:false,created};
+  persistNow();
   renderHistory();
-  toast(existingIndex>=0?'Inspection history updated.':'Inspection saved to history.');
+  if(created && typeof recordInspectionUsage==='function')recordInspectionUsage();
+  toast(created?'Inspection saved to history.':'Inspection history updated.');
+  return {saved:true,created,recordId:record.id};
  };
  window.openHistory=function(){
   document.getElementById('historyModal').classList.remove('hidden');
@@ -821,7 +883,7 @@ window.addEventListener('DOMContentLoaded',init);
    return (!q||hay.includes(q))&&(!status||r.overallStatus===status);
   });
   const count=document.getElementById('historyCount');
-  if(count) count.textContent=filtered.length+' report'+(filtered.length===1?'':'s')+' shown · '+list.length+' saved locally';
+  if(count)count.textContent=filtered.length+' report'+(filtered.length===1?'':'s')+' shown · '+list.length+' saved locally';
   const el=document.getElementById('historyList');
   if(!el)return;
   if(!filtered.length){
@@ -839,8 +901,9 @@ window.addEventListener('DOMContentLoaded',init);
  window.openHistoryRecord=function(id){
   const record=readHistory().find(r=>r.id===id);
   if(!record)return;
-  state=record.state;
-  localStorage.setItem(STORAGE+':draft',JSON.stringify(state));
+  state=structuredClone(record.state);
+  persistNow();
+  bindFields();
   if(typeof renderDefects==='function')renderDefects();
   if(typeof applyTheme==='function')applyTheme();
   if(typeof renderReport==='function')renderReport();
@@ -852,14 +915,15 @@ window.addEventListener('DOMContentLoaded',init);
   const record=readHistory().find(r=>r.id===id);
   if(!record)return;
   if(!confirm('Delete '+(record.reportId||'this inspection')+' from local history?'))return;
-  writeHistory(readHistory().filter(r=>r.id!==id));
+  const next=readHistory().filter(r=>r.id!==id);
+  if(!writeHistory(next))return;
   renderHistory();
   toast('Inspection removed from history.');
  };
  window.addEventListener('DOMContentLoaded',function(){
   if(window.lucide?.createIcons)lucide.createIcons();
  });
-})();
+})(); 
 </script>
 
 <script type="module">
