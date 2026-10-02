@@ -470,30 +470,54 @@ function choosePlan(plan){
 }
 async function startPayment(){
  if(selectedPlan==='trial'){toast('Select Professional or Business first.');return}
+ const status=document.getElementById('mpesaStatus');
+ if(!window.FIELDINSPECT_AUTH_USER){
+  status.textContent='Sign in to your FieldInspect Pro account before starting a paid subscription.';
+  status.className='text-[10px] mt-2 text-amber-700';
+  openAuth('login');
+  return;
+ }
  const rawPhone=document.getElementById('mpesaPhone')?.value.trim()||'';
  const digits=rawPhone.replace(/[^0-9]/g,'');
  let phone=null;
  if(/^0[17][0-9]{8}$/.test(digits)) phone='254'+digits.slice(1);
  else if(/^254[17][0-9]{8}$/.test(digits)) phone=digits;
  if(!phone){
-  document.getElementById('mpesaStatus').textContent='Enter a valid Kenyan M-Pesa number, e.g. 0712345678 or 254712345678.';
-  document.getElementById('mpesaStatus').className='text-[10px] mt-2 text-amber-700';
+  status.textContent='Enter a valid Kenyan M-Pesa number, e.g. 0712345678 or 254712345678.';
+  status.className='text-[10px] mt-2 text-amber-700';
   return;
  }
- const status=document.getElementById('mpesaStatus');
- status.textContent='Sending M-Pesa payment prompt to '+phone+'…';
+ status.textContent='Starting M-Pesa payment request…';
  status.className='text-[10px] mt-2 text-indigo-600';
  if(typeof window.FIELDINSPECT_START_MPESA!=='function'){
-  status.textContent='Billing backend is not connected yet. Deploy the Supabase Edge Functions first.';
+  status.textContent='Billing backend is not connected yet.';
   status.className='text-[10px] mt-2 text-amber-700';
   return;
  }
  try{
   const result=await window.FIELDINSPECT_START_MPESA(selectedPlan,phone);
   if(result?.error)throw new Error(result.error.message||result.error||'Unable to start payment');
-  status.textContent=result?.data?.message||'M-Pesa payment prompt sent. Enter your PIN on your phone.';
-  status.className='text-[10px] mt-2 text-emerald-700';
-  toast('Payment prompt sent to '+phone+'.');
+  const checkoutRequestId=result?.data?.checkoutRequestId;
+  if(!checkoutRequestId)throw new Error('M-Pesa request was accepted without a checkout reference. Check payment history before retrying.');
+  status.textContent='M-Pesa request accepted. Waiting for payment result…';
+  status.className='text-[10px] mt-2 text-indigo-600';
+  toast('M-Pesa request accepted. Complete the sandbox test payment if prompted.');
+  const payment=await window.FIELDINSPECT_WAIT_FOR_PAYMENT(checkoutRequestId,18);
+  if(payment?.status==='SUCCESS'){
+   await syncCloudSubscription();
+   updatePlanUI();
+   status.textContent='Payment confirmed. Your '+(PLAN_DEFS[selectedPlan]?.name||selectedPlan)+' subscription is now active.';
+   status.className='text-[10px] mt-2 text-emerald-700';
+   toast('Payment confirmed. Subscription activated.');
+   return;
+  }
+  if(payment?.status==='FAILED'){
+   status.textContent='Payment failed or was cancelled: '+(payment.result_description||'Daraja returned a failed payment.');
+   status.className='text-[10px] mt-2 text-rose-700';
+   return;
+  }
+  status.textContent='Payment is still pending. You can continue using FieldInspect Pro and check your account again shortly.';
+  status.className='text-[10px] mt-2 text-amber-700';
  }catch(error){
   status.textContent=error?.message||'Unable to start M-Pesa payment.';
   status.className='text-[10px] mt-2 text-rose-700';
@@ -847,8 +871,26 @@ const supabase = supabaseReady ? createClient(cfg.SUPABASE_URL, cfg.SUPABASE_PUB
 window.FIELDINSPECT_SUPABASE = supabase;
 window.FIELDINSPECT_START_MPESA = async function(plan, phone){
   if(!supabase) throw new Error('Supabase authentication is not configured.');
-  const {data, error}=await supabase.functions.invoke('mpesa-stk-push',{body:{plan,phone}});
-  return {data,error};
+  const timeout = new Promise((_, reject)=>setTimeout(
+    ()=>reject(new Error('M-Pesa request timed out after 20 seconds. The billing function did not respond.')),
+    20000
+  ));
+  const request = supabase.functions.invoke('mpesa-stk-push',{body:{plan,phone}});
+  return await Promise.race([request, timeout]);
+};
+
+window.FIELDINSPECT_WAIT_FOR_PAYMENT = async function(checkoutRequestId, maxAttempts=18){
+  if(!supabase || !authUser || !checkoutRequestId) return null;
+  for(let attempt=0; attempt<maxAttempts; attempt++){
+    const {data,error}=await supabase
+      .from('payments')
+      .select('status,result_description,mpesa_receipt_number,plan,amount,completed_at')
+      .eq('checkout_request_id',checkoutRequestId)
+      .maybeSingle();
+    if(!error && data && ['SUCCESS','FAILED'].includes(data.status)) return data;
+    if(attempt<maxAttempts-1) await new Promise(resolve=>setTimeout(resolve,5000));
+  }
+  return null;
 };
 async function syncCloudSubscription(){
   if(!supabase||!authUser)return;
