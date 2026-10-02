@@ -1,0 +1,6 @@
+{
+  "name": "FieldInspect Pro - Photo & PDF Report Generator",
+  "description": "A fast, field-ready photo and inspection report generator for technicians, home inspectors, and contractors with live preview and instant multi-page PDF export.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
