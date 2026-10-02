@@ -1,9 +1,24 @@
 // FieldInspect Pro authentication configuration
-// The Supabase publishable key is safe to expose in browser/desktop client code.
-// NEVER put a Supabase secret key, M-Pesa secret, or other server secret here.
-window.FIELDINSPECT_AUTH = {
-  SUPABASE_URL: "https://aynlfxquofvlnthxuqcl.supabase.co",
-  SUPABASE_PUBLISHABLE_KEY: "sb_publishable_N2gR3sQb0PE18MsEN0Htbg_qn6fQooJ",
-  // Production URL used for email confirmation and password reset flows.
-  AUTH_REDIRECT_URL: "https://radiant-granita-8f2db2.netlify.app/"
-};
+//
+// This is client-side configuration. Supabase publishable keys are intended
+// to be exposed in browser/desktop applications. NEVER put a Supabase secret
+// or service_role key here.
+//
+// If a deployment/build system provides these values on window.FIELDINSPECT_ENV,
+// they take precedence. Otherwise the production publishable configuration
+// below is used directly.
+(function () {
+  const env = window.FIELDINSPECT_ENV || {};
+
+  window.FIELDINSPECT_AUTH = {
+    SUPABASE_URL: env.SUPABASE_URL || "https://aynlfxquofvlnthxuqcl.supabase.co",
+    SUPABASE_PUBLISHABLE_KEY:
+      env.SUPABASE_PUBLISHABLE_KEY ||
+      env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+      env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+      "sb_publishable_N2gR3sQb0PE18MsEN0Htbg_qn6fQooJ",
+    AUTH_REDIRECT_URL:
+      env.AUTH_REDIRECT_URL ||
+      "https://radiant-granita-8f2db2.netlify.app/"
+  };
+})();
