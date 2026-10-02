@@ -33,7 +33,7 @@ function cloudRow(record){
     title:record.projectName || m.projectName || 'Untitled inspection',
     client_name:record.clientName || m.clientName || '',
     site_name:record.siteLocation || m.siteLocation || '',
-    status:'completed',
+    status:record.status || 'completed',
     inspection_date:record.inspectionDate || m.inspectionDate || null,
     data:s,
     updated_at:record.updatedAt || new Date().toISOString()
@@ -115,11 +115,13 @@ async function boot(){
   if(typeof window.saveCurrentToHistory==='function' && !window.__cloudSaveWrapped){
     const original=window.saveCurrentToHistory;
     window.saveCurrentToHistory=async function(){
-      original.apply(this,arguments);
-      if(user()){
+      const saveResult=original.apply(this,arguments);
+      if(user() && saveResult?.saved){
         const result=await sync();
         if(result.ok) toast('Inspection saved and synced to cloud.');
+        else toast('Inspection saved locally. Cloud sync will retry when available.');
       }
+      return saveResult;
     };
     window.__cloudSaveWrapped=true;
   }
