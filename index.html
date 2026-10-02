@@ -66,7 +66,7 @@ button{cursor:pointer}
    <span id="planDot" class="w-2 h-2 rounded-full bg-amber-400"></span><span id="planText">Free Trial · 2 reports</span>
   </button>
   <div class="flex items-center gap-1.5 order-2 sm:order-3">
-   <button onclick="newInspection()" class="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold flex items-center gap-1.5"><i data-lucide="plus" class="w-3.5 h-3.5"></i>New</button>
+   <button onclick="newInspection()" class="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold flex items-center gap-1.5"><i data-lucide="plus" class="w-3.5 h-3.5"></i>New</button><button onclick="openHistory()" class="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold flex items-center gap-1.5"><i data-lucide="history" class="w-3.5 h-3.5"></i>History</button>
    <button onclick="loadSample()" class="hidden md:flex px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold items-center gap-1.5"><i data-lucide="sparkles" class="w-3.5 h-3.5 text-amber-300"></i>Sample</button>
    <button onclick="handlePdf()" class="px-3 py-1.5 rounded-lg text-xs font-bold text-white shadow-lg flex items-center gap-1.5" style="background:var(--accent)"><i data-lucide="file-down" class="w-4 h-4"></i>Download PDF</button>
   </div>
@@ -154,6 +154,38 @@ button{cursor:pointer}
 
 <div id="toast" class="fixed bottom-5 right-5 z-[100] hidden max-w-sm rounded-xl bg-slate-950 text-white shadow-2xl px-4 py-3 text-xs font-semibold"></div>
 
+<!-- INSPECTION HISTORY -->
+<div id="historyModal" class="fixed inset-0 z-[85] hidden bg-slate-950/70 backdrop-blur-sm p-3 sm:p-6 overflow-y-auto">
+ <div class="min-h-full flex items-center justify-center">
+  <div class="w-full max-w-6xl bg-white rounded-3xl shadow-2xl overflow-hidden">
+   <div class="p-5 sm:p-7 border-b border-slate-200 flex flex-wrap items-center justify-between gap-4">
+    <div>
+     <div class="text-[10px] uppercase tracking-[.2em] font-extrabold text-indigo-600">FieldInspect Pro</div>
+     <h2 class="text-2xl sm:text-3xl font-extrabold mt-1">Inspection History</h2>
+     <p class="text-sm text-slate-500 mt-1">Completed reports saved on this device.</p>
+    </div>
+    <div class="flex items-center gap-2">
+     <button onclick="saveCurrentToHistory()" class="px-3 py-2 rounded-lg bg-indigo-600 text-white text-xs font-extrabold flex items-center gap-1.5"><i data-lucide="save" class="w-4 h-4"></i>Save current</button>
+     <button onclick="closeHistory()" class="w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center"><i data-lucide="x" class="w-5 h-5"></i></button>
+    </div>
+   </div>
+   <div class="p-5 sm:p-7">
+    <div class="flex flex-col sm:flex-row gap-3 mb-5">
+     <div class="relative flex-1">
+      <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+      <input id="historySearch" oninput="renderHistory()" class="field pl-9" placeholder="Search report ID, project, client, inspector or location…">
+     </div>
+     <select id="historyStatus" onchange="renderHistory()" class="field sm:w-52">
+      <option value="">All statuses</option>
+      <option>Passed</option><option>Satisfactory</option><option>Monitor</option><option>Attention required</option>
+     </select>
+    </div>
+    <div id="historyCount" class="text-[11px] font-bold text-slate-500 mb-3"></div>
+    <div id="historyList" class="space-y-3"></div>
+   </div>
+  </div>
+ </div>
+</div>
 <!-- PAYWALL -->
 <div id="paywall" class="fixed inset-0 z-[80] hidden bg-slate-950/70 backdrop-blur-sm p-3 sm:p-6 overflow-y-auto">
  <div class="min-h-full flex items-center justify-center">
@@ -492,6 +524,106 @@ function mobileTab(tab){
  else{ed.classList.add('hidden');pv.classList.remove('hidden');document.getElementById('tabPreview').className='py-2 rounded-lg bg-indigo-600 text-white text-xs font-bold';document.getElementById('tabEditor').className='py-2 rounded-lg text-slate-300 text-xs font-bold';fitPreview()}
 }
 window.addEventListener('DOMContentLoaded',init);
+</script>
+<script>
+/* FieldInspect Pro — local inspection history */
+(function(){
+ 'use strict';
+ const HISTORY_KEY='fieldinspect-pro-v2:history';
+
+ function readHistory(){
+  try{
+   const value=JSON.parse(localStorage.getItem(HISTORY_KEY));
+   return Array.isArray(value)?value:[];
+  }catch(e){return []}
+ }
+ function writeHistory(list){
+  localStorage.setItem(HISTORY_KEY,JSON.stringify(list.slice(0,100)));
+ }
+ function snapshotState(){
+  return JSON.parse(JSON.stringify(state));
+ }
+ window.saveCurrentToHistory=function(){
+  const copy=snapshotState();
+  const now=new Date().toISOString();
+  const id=copy.meta.reportId||('REP-'+now.replace(/\D/g,'').slice(0,14));
+  const list=readHistory();
+  const existingIndex=list.findIndex(x=>x.reportId===id);
+  const record={
+   id:existingIndex>=0?list[existingIndex].id:crypto.randomUUID(),
+   reportId:id,
+   projectName:copy.meta.projectName||'Untitled inspection',
+   clientName:copy.meta.clientName||'',
+   inspectorName:copy.meta.inspectorName||'',
+   siteLocation:copy.meta.siteLocation||'',
+   inspectionDate:copy.meta.inspectionDate||'',
+   overallStatus:copy.meta.overallStatus||'Attention required',
+   updatedAt:now,
+   state:copy
+  };
+  if(existingIndex>=0) list[existingIndex]=record; else list.unshift(record);
+  writeHistory(list);
+  renderHistory();
+  toast(existingIndex>=0?'Inspection history updated.':'Inspection saved to history.');
+ };
+ window.openHistory=function(){
+  document.getElementById('historyModal').classList.remove('hidden');
+  document.body.classList.add('overflow-hidden');
+  renderHistory();
+  setTimeout(()=>document.getElementById('historySearch')?.focus(),50);
+ };
+ window.closeHistory=function(){
+  document.getElementById('historyModal').classList.add('hidden');
+  document.body.classList.remove('overflow-hidden');
+ };
+ window.renderHistory=function(){
+  const list=readHistory();
+  const q=(document.getElementById('historySearch')?.value||'').trim().toLowerCase();
+  const status=document.getElementById('historyStatus')?.value||'';
+  const filtered=list.filter(r=>{
+   const hay=[r.reportId,r.projectName,r.clientName,r.inspectorName,r.siteLocation,r.inspectionDate,r.overallStatus].join(' ').toLowerCase();
+   return (!q||hay.includes(q))&&(!status||r.overallStatus===status);
+  });
+  const count=document.getElementById('historyCount');
+  if(count) count.textContent=filtered.length+' report'+(filtered.length===1?'':'s')+' shown · '+list.length+' saved locally';
+  const el=document.getElementById('historyList');
+  if(!el)return;
+  if(!filtered.length){
+   el.innerHTML='<div class="border border-dashed border-slate-300 rounded-2xl p-10 text-center"><div class="mx-auto w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400"><i data-lucide="folder-open" class="w-6 h-6"></i></div><div class="font-extrabold text-sm mt-3">'+(list.length?'No matching inspections':'No completed inspections yet')+'</div><p class="text-xs text-slate-500 mt-1">'+(list.length?'Try a different search or status filter.':'Save an inspection here after completing your field report.')+'</p></div>';
+  }else{
+   el.innerHTML=filtered.map(r=>{
+    const date=r.inspectionDate?new Date(r.inspectionDate+'T00:00:00').toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'}):'No date';
+    const updated=r.updatedAt?new Date(r.updatedAt).toLocaleString(undefined,{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';
+    const statusClass=r.overallStatus==='Passed'?'bg-emerald-50 text-emerald-700 border-emerald-200':r.overallStatus==='Attention required'?'bg-rose-50 text-rose-700 border-rose-200':'bg-amber-50 text-amber-700 border-amber-200';
+    return '<div class="rounded-2xl border border-slate-200 p-4 hover:border-indigo-200 hover:shadow-sm transition"><div class="flex flex-col lg:flex-row lg:items-center gap-4"><div class="flex-1 min-w-0"><div class="flex flex-wrap items-center gap-2"><span class="font-mono text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md">'+escapeHtml(r.reportId)+'</span><span class="text-[10px] font-bold border rounded-full px-2 py-1 '+statusClass+'">'+escapeHtml(r.overallStatus)+'</span></div><h3 class="font-extrabold text-sm mt-2 truncate">'+escapeHtml(r.projectName)+'</h3><div class="grid sm:grid-cols-3 gap-x-4 gap-y-1 mt-2 text-[11px] text-slate-500"><span><b class="text-slate-700">Client:</b> '+escapeHtml(r.clientName||'—')+'</span><span><b class="text-slate-700">Inspector:</b> '+escapeHtml(r.inspectorName||'—')+'</span><span><b class="text-slate-700">Date:</b> '+escapeHtml(date)+'</span><span class="sm:col-span-3"><b class="text-slate-700">Location:</b> '+escapeHtml(r.siteLocation||'—')+'</span></div><div class="text-[9px] text-slate-400 mt-2">Last saved '+escapeHtml(updated)+'</div></div><div class="flex items-center gap-2 shrink-0"><button onclick="openHistoryRecord(\''+r.id+'\')" class="px-3 py-2 rounded-lg bg-slate-900 text-white text-xs font-extrabold flex items-center gap-1.5"><i data-lucide="pencil" class="w-3.5 h-3.5"></i>Open & edit</button><button onclick="deleteHistoryRecord(\''+r.id+'\')" class="w-9 h-9 rounded-lg border border-rose-200 text-rose-600 hover:bg-rose-50 flex items-center justify-center" title="Delete"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div></div></div>';
+   }).join('');
+  }
+  if(window.lucide?.createIcons)lucide.createIcons();
+ };
+ window.openHistoryRecord=function(id){
+  const record=readHistory().find(r=>r.id===id);
+  if(!record)return;
+  state=record.state;
+  localStorage.setItem(STORAGE+':draft',JSON.stringify(state));
+  if(typeof renderDefects==='function')renderDefects();
+  if(typeof applyTheme==='function')applyTheme();
+  if(typeof renderReport==='function')renderReport();
+  if(typeof setupSignatures==='function')setTimeout(setupSignatures,0);
+  closeHistory();
+  toast('Loaded '+(state.meta.reportId||'inspection')+' for editing.');
+ };
+ window.deleteHistoryRecord=function(id){
+  const record=readHistory().find(r=>r.id===id);
+  if(!record)return;
+  if(!confirm('Delete '+(record.reportId||'this inspection')+' from local history?'))return;
+  writeHistory(readHistory().filter(r=>r.id!==id));
+  renderHistory();
+  toast('Inspection removed from history.');
+ };
+ window.addEventListener('DOMContentLoaded',function(){
+  if(window.lucide?.createIcons)lucide.createIcons();
+ });
+})();
 </script>
 </body>
 </html>
