@@ -80,10 +80,20 @@ async function pull(){
 
 async function push(){
   if(!supabase || !user()) return;
-  const rows=readHistory().map(cloudRow);
-  if(!rows.length) return;
-  const {error}=await supabase.from('inspections').upsert(rows,{onConflict:'user_id,local_id'});
-  if(error) throw error;
+  const local=readHistory();
+  const rows=local.map(cloudRow);
+  if(rows.length){
+    const {error}=await supabase.from('inspections').upsert(rows,{onConflict:'user_id,local_id'});
+    if(error) throw error;
+  }
+  const {data:remote,error:remoteError}=await supabase.from('inspections').select('local_id').eq('user_id',user().id);
+  if(remoteError) throw remoteError;
+  const localIds=new Set(local.map(r=>r.id));
+  const deleted=(remote||[]).map(r=>r.local_id).filter(id=>id && !localIds.has(id));
+  if(deleted.length){
+    const {error:deleteError}=await supabase.from('inspections').delete().eq('user_id',user().id).in('local_id',deleted);
+    if(deleteError) throw deleteError;
+  }
 }
 
 async function sync(){
@@ -113,8 +123,23 @@ async function boot(){
     };
     window.__cloudSaveWrapped=true;
   }
+  if(typeof window.deleteHistoryRecord==='function' && !window.__cloudDeleteWrapped){
+    const originalDelete=window.deleteHistoryRecord;
+    window.deleteHistoryRecord=async function(){
+      const before=readHistory().length;
+      originalDelete.apply(this,arguments);
+      if(user() && readHistory().length<before){
+        const result=await sync();
+        if(result.ok) toast('Inspection deleted and cloud history synced.');
+      }
+    };
+    window.__cloudDeleteWrapped=true;
+  }
   await sync();
 }
 
 window.addEventListener('DOMContentLoaded',()=>setTimeout(boot,0));
 window.addEventListener('fieldinspect:auth-changed',()=>setTimeout(boot,0));
+if(supabase?.auth){
+  supabase.auth.onAuthStateChange(()=>setTimeout(boot,0));
+}
