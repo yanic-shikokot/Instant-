@@ -962,9 +962,16 @@ window.submitAuth=async function(){
         authMessage('Account created. Check your email to confirm your address.','success');
       }
     }else{
-      const {error}=await supabase.auth.signInWithPassword({email,password});
+      const {data,error}=await supabase.auth.signInWithPassword({email,password});
       if(error)throw error;
-      closeAuth(); window.FIELDINSPECT_AUTH_USER=authUser; subscription=loadSubscription(); updatePlanUI(); toast('Signed in successfully.');
+      authUser=data.user;
+      window.FIELDINSPECT_AUTH_USER=authUser;
+      subscription=loadSubscription();
+      updateAuthUI();
+      updatePlanUI();
+      await syncCloudSubscription();
+      closeAuth();
+      toast('Signed in successfully.');
     }
   }catch(e){authMessage(e.message||'Authentication failed.')}
   finally{submit.disabled=false;submit.textContent=authMode==='signup'?'Create account':'Sign in'}
