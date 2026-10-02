@@ -66,6 +66,8 @@ async function pull(){
         siteLocation:r.site_name||s?.meta?.siteLocation||'',
         inspectionDate:r.inspection_date||s?.meta?.inspectionDate||'',
         overallStatus:s?.meta?.overallStatus||'Attention required',
+        status:r.status||'completed',
+        createdAt:r.created_at||new Date().toISOString(),
         updatedAt:r.updated_at||r.created_at||new Date().toISOString(),
         state:s
       });
