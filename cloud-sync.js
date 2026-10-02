@@ -96,10 +96,10 @@ async function push(){
   }
 }
 
-async function sync(){
+async function sync(options={}){
   if(!supabase || !user()) return {ok:false};
   try{
-    await pull();
+    if(!options.skipPull) await pull();
     await push();
     await pull();
     return {ok:true};
@@ -129,7 +129,7 @@ async function boot(){
       const before=readHistory().length;
       originalDelete.apply(this,arguments);
       if(user() && readHistory().length<before){
-        const result=await sync();
+        const result=await sync({skipPull:true});
         if(result.ok) toast('Inspection deleted and cloud history synced.');
       }
     };
