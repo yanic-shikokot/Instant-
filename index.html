@@ -470,9 +470,13 @@ function choosePlan(plan){
 }
 async function startPayment(){
  if(selectedPlan==='trial'){toast('Select Professional or Business first.');return}
- const phone=document.getElementById('mpesaPhone')?.value.trim()||'';
- if(!/^0?7\\d{8}$/.test(phone.replace(/\\s+/g,''))){
-  document.getElementById('mpesaStatus').textContent='Enter a valid Kenyan M-Pesa number.';
+ const rawPhone=document.getElementById('mpesaPhone')?.value.trim()||'';
+ const digits=rawPhone.replace(/[\\s()-]/g,'').replace(/^\\+/,'');
+ let phone=null;
+ if(/^0[17]\\d{8}$/.test(digits)) phone='254'+digits.slice(1);
+ else if(/^254[17]\\d{8}$/.test(digits)) phone=digits;
+ if(!phone){
+  document.getElementById('mpesaStatus').textContent='Enter a valid Kenyan M-Pesa number, e.g. 0712345678 or 254712345678.';
   document.getElementById('mpesaStatus').className='text-[10px] mt-2 text-amber-700';
   return;
  }
