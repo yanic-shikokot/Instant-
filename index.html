@@ -62,7 +62,8 @@ if (!window.FIELDINSPECT_AUTH?.SUPABASE_URL || !window.FIELDINSPECT_AUTH?.SUPABA
   window.FIELDINSPECT_AUTH = {
     SUPABASE_URL: "https://aynlfxquofvlnthxuqcl.supabase.co",
     SUPABASE_PUBLISHABLE_KEY: "sb_publishable_N2gR3sQb0PE18MsEN0Htbg_qn6fQooJ",
-    AUTH_REDIRECT_URL: "https://radiant-granita-8f2db2.netlify.app/"
+    AUTH_REDIRECT_URL: "https://radiant-granita-8f2db2.netlify.app/",
+    SUPABASE_FUNCTIONS_URL: "https://aynlfxquofvlnthxuqcl.supabase.co/functions/v1"
   };
 }
 </script>
@@ -317,15 +318,15 @@ if (!window.FIELDINSPECT_AUTH?.SUPABASE_URL || !window.FIELDINSPECT_AUTH?.SUPABA
 
     <div class="mt-5 rounded-2xl bg-slate-50 border border-slate-200 p-5">
      <div class="flex items-center gap-2"><i data-lucide="shield-check" class="w-4 h-4 text-indigo-600"></i><h3 class="font-extrabold text-sm">Subscription status</h3></div>
-     <p id="subscriptionStatusText" class="text-[11px] text-slate-500 mt-1">Your plan is stored locally for this Phase 2A build. Live M-Pesa billing and server-side verification come next.</p>
+     <p id="subscriptionStatusText" class="text-[11px] text-slate-500 mt-1">Subscription status is synced to your FieldInspect Pro account. M-Pesa payments are verified server-side.</p>
      <div class="mt-4 flex flex-col sm:flex-row gap-2">
-      <input id="mpesaPhone" class="field flex-1" inputmode="tel" placeholder="Safaricom number — Phase 2B">
+      <input id="mpesaPhone" class="field flex-1" inputmode="tel" placeholder="M-Pesa number">
       <button onclick="startPayment()" class="px-4 py-2 rounded-lg bg-emerald-600 text-white text-xs font-extrabold">Continue to payment</button>
      </div>
      <div id="mpesaStatus" class="text-[10px] mt-2 text-slate-500"></div>
     </div>
    </div>
-   <div class="px-5 sm:px-7 pb-6 text-[10px] text-slate-400">Payment activation is intentionally not simulated here. The next phase will connect verified M-Pesa transactions to the subscription record.</div>
+   <div class="px-5 sm:px-7 pb-6 text-[10px] text-slate-400">M-Pesa activation uses a server-side STK Push. Your PIN and payment credentials never enter the browser.</div>
   </div>
  </div>
 </div>
@@ -347,7 +348,9 @@ if (!window.FIELDINSPECT_AUTH?.SUPABASE_URL || !window.FIELDINSPECT_AUTH?.SUPABA
    A real STK push requires a server endpoint. Set this value in production:
    window.FIELDINSPECT_CONFIG={MPESA_STK_ENDPOINT:'/api/mpesa/stkpush'}
 */
-window.FIELDINSPECT_CONFIG=window.FIELDINSPECT_CONFIG||{MPESA_STK_ENDPOINT:'/api/mpesa/stkpush'};
+window.FIELDINSPECT_CONFIG=window.FIELDINSPECT_CONFIG||{};
+window.FIELDINSPECT_CONFIG.MPESA_STK_ENDPOINT=window.FIELDINSPECT_CONFIG.MPESA_STK_ENDPOINT||
+  ((window.FIELDINSPECT_AUTH?.SUPABASE_FUNCTIONS_URL||'')+'/mpesa-stk-push');
 
 const STORAGE='fieldinspect-pro-v2';
 const THEMES={
@@ -465,12 +468,32 @@ function choosePlan(plan){
  document.getElementById('mpesaPhone')?.focus();
  document.getElementById('subscriptionStatusText').textContent='Selected '+PLAN_DEFS[plan].name+'. Continue to payment to activate it.';
 }
-function startPayment(){
+async function startPayment(){
  if(selectedPlan==='trial'){toast('Select Professional or Business first.');return}
  const phone=document.getElementById('mpesaPhone')?.value.trim()||'';
- if(!/^0?7\\d{8}$/.test(phone.replace(/\\s+/g,''))){document.getElementById('mpesaStatus').textContent='Enter a valid Safaricom number. Live M-Pesa activation will be connected in Phase 2B.';document.getElementById('mpesaStatus').className='text-[10px] mt-2 text-amber-700';return}
- document.getElementById('mpesaStatus').textContent='Payment checkout is not live yet. Your selected plan is '+PLAN_DEFS[selectedPlan].name+'.';
- document.getElementById('mpesaStatus').className='text-[10px] mt-2 text-indigo-600';
+ if(!/^0?7\\d{8}$/.test(phone.replace(/\\s+/g,''))){
+  document.getElementById('mpesaStatus').textContent='Enter a valid Kenyan M-Pesa number.';
+  document.getElementById('mpesaStatus').className='text-[10px] mt-2 text-amber-700';
+  return;
+ }
+ const status=document.getElementById('mpesaStatus');
+ status.textContent='Sending M-Pesa payment prompt…';
+ status.className='text-[10px] mt-2 text-indigo-600';
+ if(typeof window.FIELDINSPECT_START_MPESA!=='function'){
+  status.textContent='Billing backend is not connected yet. Deploy the Supabase Edge Functions first.';
+  status.className='text-[10px] mt-2 text-amber-700';
+  return;
+ }
+ try{
+  const result=await window.FIELDINSPECT_START_MPESA(selectedPlan,phone);
+  if(result?.error)throw new Error(result.error.message||result.error||'Unable to start payment');
+  status.textContent=result?.data?.message||'M-Pesa payment prompt sent. Enter your PIN on your phone.';
+  status.className='text-[10px] mt-2 text-emerald-700';
+  toast('Payment prompt sent.');
+ }catch(error){
+  status.textContent=error?.message||'Unable to start M-Pesa payment.';
+  status.className='text-[10px] mt-2 text-rose-700';
+ }
 }
 function openPaywall(tab='plans'){
  updateSubscriptionUI();
@@ -832,6 +855,44 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 const cfg = window.FIELDINSPECT_AUTH || {};
 const supabaseReady = Boolean(cfg.SUPABASE_URL && cfg.SUPABASE_PUBLISHABLE_KEY);
 const supabase = supabaseReady ? createClient(cfg.SUPABASE_URL, cfg.SUPABASE_PUBLISHABLE_KEY) : null;
+window.FIELDINSPECT_SUPABASE = supabase;
+window.FIELDINSPECT_START_MPESA = async function(plan, phone){
+  if(!supabase) throw new Error('Supabase authentication is not configured.');
+  const {data, error}=await supabase.functions.invoke('mpesa-stk-push',{body:{plan,phone}});
+  return {data,error};
+};
+async function syncCloudSubscription(){
+  if(!supabase||!authUser)return;
+  const {data,error}=await supabase.rpc('ensure_trial_subscription');
+  if(error) return;
+  if(data){
+    subscription={
+      plan:data.plan,
+      status:data.status,
+      inspectionUsed:Number(data.inspections_used||0),
+      pdfUsed:Number(data.pdf_exports_used||0),
+      startedAt:data.started_at?Date.parse(data.started_at):Date.now(),
+      currentPeriodEnd:data.current_period_end?Date.parse(data.current_period_end):0,
+      paymentMethod:data.payment_method||null,
+      lastPaymentId:data.last_payment_id||null
+    };
+    saveSubscription();
+    updateSubscriptionUI();
+  }
+  const {data:remote}=await supabase.from('subscriptions').select('*').eq('user_id',authUser.id).maybeSingle();
+  if(remote){
+    subscription={
+      plan:remote.plan,status:remote.status,
+      inspectionUsed:Number(remote.inspections_used||0),
+      pdfUsed:Number(remote.pdf_exports_used||0),
+      startedAt:remote.started_at?Date.parse(remote.started_at):Date.now(),
+      currentPeriodEnd:remote.current_period_end?Date.parse(remote.current_period_end):0,
+      paymentMethod:remote.payment_method||null,
+      lastPaymentId:remote.last_payment_id||null
+    };
+    saveSubscription(); updateSubscriptionUI();
+  }
+}
 let authUser = null;
 let authMode = 'login';
 
@@ -960,9 +1021,9 @@ window.addEventListener('DOMContentLoaded',async()=>{
   document.getElementById('authSetup')?.classList.toggle('hidden',supabaseReady);
   if(!supabase){updateAuthUI();return}
   const {data}=await supabase.auth.getSession();
-  authUser=data.session?.user||null; window.FIELDINSPECT_AUTH_USER=authUser; subscription=loadSubscription(); updateAuthUI(); updatePlanUI();
+  authUser=data.session?.user||null; window.FIELDINSPECT_AUTH_USER=authUser; subscription=loadSubscription(); updateAuthUI(); updatePlanUI(); await syncCloudSubscription();
   supabase.auth.onAuthStateChange((_event,session)=>{
-    authUser=session?.user||null; window.FIELDINSPECT_AUTH_USER=authUser; subscription=loadSubscription(); updateAuthUI(); updatePlanUI();
+    authUser=session?.user||null; window.FIELDINSPECT_AUTH_USER=authUser; subscription=loadSubscription(); updateAuthUI(); updatePlanUI(); syncCloudSubscription();
   });
   const recovery=location.hash.includes('type=recovery');
   if(recovery){
