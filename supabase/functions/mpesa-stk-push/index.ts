@@ -65,8 +65,11 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "POST required" }, 405);
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const publishableKeys = Deno.env.get("SUPABASE_PUBLISHABLE_KEYS");
-  if (!supabaseUrl || !publishableKeys) {
+  const anonKey =
+    Deno.env.get("SUPABASE_ANON_KEY") ||
+    Deno.env.get("SUPABASE_PUBLISHABLE_KEY");
+
+  if (!supabaseUrl || !anonKey) {
     return json({ error: "Supabase function configuration is incomplete" }, 500);
   }
 
@@ -75,8 +78,7 @@ Deno.serve(async (req) => {
     return json({ error: "Authentication required" }, 401);
   }
 
-  const publishableKey = JSON.parse(publishableKeys).default;
-  const supabase = createClient(supabaseUrl, publishableKey, {
+  const supabase = createClient(supabaseUrl, anonKey, {
     global: { headers: { Authorization: authHeader } },
   });
 
@@ -132,11 +134,12 @@ Deno.serve(async (req) => {
     }, 502);
   }
 
-  const secretKeys = JSON.parse(Deno.env.get("SUPABASE_SECRET_KEYS") || "{}");
-  const secretKey = secretKeys.default;
-  if (!secretKey) return json({ error: "Supabase secret key is not configured" }, 500);
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!serviceRoleKey) {
+    return json({ error: "Supabase service role key is not configured" }, 500);
+  }
 
-  const admin = createClient(supabaseUrl, secretKey);
+  const admin = createClient(supabaseUrl, serviceRoleKey);
 
   const { data: subscription } = await admin
     .from("subscriptions")
