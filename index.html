@@ -76,7 +76,7 @@ if (!window.FIELDINSPECT_AUTH?.SUPABASE_URL || !window.FIELDINSPECT_AUTH?.SUPABA
    <div><div class="font-extrabold tracking-tight text-sm sm:text-base">FieldInspect <span class="text-indigo-300">Pro</span></div><div class="text-[10px] text-slate-400 hidden sm:block">Commercial inspection reporting platform</div></div>
   </div>
   <button id="planBadge" onclick="openPaywall('plans')" class="order-3 sm:order-2 flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-400/10 border border-amber-300/20 text-amber-200 text-[11px] font-semibold hover:bg-amber-400/15 transition">
-   <span id="planDot" class="w-2 h-2 rounded-full bg-amber-400"></span><span id="planText">Free Trial · 2 reports</span>
+   <span id="planDot" class="w-2 h-2 rounded-full bg-amber-400"></span><span id="planText">Free Trial · 10 inspections</span>
   </button>
   <div class="flex items-center gap-1.5 order-2 sm:order-3">
    <button onclick="newInspection()" class="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold flex items-center gap-1.5"><i data-lucide="plus" class="w-3.5 h-3.5"></i>New</button><button onclick="openHistory()" class="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold flex items-center gap-1.5"><i data-lucide="history" class="w-3.5 h-3.5"></i>History</button>
@@ -148,7 +148,7 @@ if (!window.FIELDINSPECT_AUTH?.SUPABASE_URL || !window.FIELDINSPECT_AUTH?.SUPABA
 
   <div class="rounded-2xl border border-slate-200 bg-slate-950 text-white p-4">
    <div class="flex items-center justify-between gap-3">
-    <div><div class="text-xs font-bold uppercase tracking-wider text-indigo-300">Pro workflow</div><div class="text-sm font-extrabold mt-1">Unlimited branded PDF reporting</div><p class="text-[11px] text-slate-400 mt-1">2 PDF exports are included in your free trial.</p></div>
+    <div><div class="text-xs font-bold uppercase tracking-wider text-indigo-300">Pro workflow</div><div class="text-sm font-extrabold mt-1">Unlimited branded PDF reporting</div><p class="text-[11px] text-slate-400 mt-1">Free trial includes 10 inspections and 2 PDF exports.</p></div>
     <button onclick="openPaywall('plans')" class="shrink-0 bg-white text-slate-950 px-3 py-2 rounded-lg text-xs font-extrabold hover:bg-slate-100">View plans</button>
    </div>
   </div>
@@ -202,7 +202,7 @@ if (!window.FIELDINSPECT_AUTH?.SUPABASE_URL || !window.FIELDINSPECT_AUTH?.SUPABA
     </div>
     <div id="authMessage" class="hidden mt-4 rounded-xl px-3 py-2 text-[11px] font-semibold"></div>
     <div id="authSetup" class="hidden mt-4 rounded-xl bg-amber-50 border border-amber-200 px-3 py-2 text-[11px] text-amber-800">
-     Authentication is not configured yet. Add the Supabase URL and anon key in <code>auth-config.js</code>.
+     Authentication is not configured yet. Add the Supabase URL and publishable key in <code>auth-config.js</code>.
     </div>
    </div>
   </div>
@@ -262,44 +262,70 @@ if (!window.FIELDINSPECT_AUTH?.SUPABASE_URL || !window.FIELDINSPECT_AUTH?.SUPABA
   </div>
  </div>
 </div>
-<!-- PAYWALL -->
+<!-- SUBSCRIPTION / PLANS -->
 <div id="paywall" class="fixed inset-0 z-[80] hidden bg-slate-950/70 backdrop-blur-sm p-3 sm:p-6 overflow-y-auto">
  <div class="min-h-full flex items-center justify-center">
-  <div class="w-full max-w-4xl bg-white rounded-3xl shadow-2xl overflow-hidden">
+  <div class="w-full max-w-5xl bg-white rounded-3xl shadow-2xl overflow-hidden">
    <div class="p-5 sm:p-7 border-b border-slate-200 flex justify-between gap-4">
-    <div><div class="text-[10px] uppercase tracking-[.2em] font-extrabold text-indigo-600">FieldInspect Pro</div><h2 class="text-2xl sm:text-3xl font-extrabold mt-1">Choose your reporting plan</h2><p class="text-sm text-slate-500 mt-1">Start with 2 free PDF downloads. Upgrade when your inspection business needs more.</p></div>
+    <div>
+     <div class="text-[10px] uppercase tracking-[.2em] font-extrabold text-indigo-600">FieldInspect Pro</div>
+     <h2 class="text-2xl sm:text-3xl font-extrabold mt-1">Plans & subscription</h2>
+     <p class="text-sm text-slate-500 mt-1">Choose the workspace capacity that matches your inspection business.</p>
+    </div>
     <button onclick="closePaywall()" class="w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center shrink-0"><i data-lucide="x" class="w-5 h-5"></i></button>
    </div>
-   <div class="p-5 sm:p-7 grid md:grid-cols-2 gap-4">
-    <div class="rounded-2xl border border-slate-200 p-5">
-     <div class="flex justify-between items-start"><div><h3 class="font-extrabold text-lg">Monthly Pro</h3><p class="text-xs text-slate-500 mt-1">For individual inspectors</p></div><span class="text-[10px] font-bold bg-slate-100 px-2 py-1 rounded-full">1 inspector</span></div>
-     <div class="mt-5"><span class="text-3xl font-black">KSh 1,800</span><span class="text-slate-500 text-sm"> / month</span><div class="text-[11px] text-slate-400 mt-1">About $15 / month</div></div>
-     <ul class="mt-5 space-y-2 text-xs text-slate-600"><li>✓ Unlimited PDF exports</li><li>✓ Branded themes & typography</li><li>✓ Photo evidence compression</li><li>✓ Field bullet-note workflow</li></ul>
-     <button onclick="selectPlan('pro')" class="mt-6 w-full py-2.5 rounded-xl bg-slate-900 text-white text-xs font-extrabold hover:bg-slate-800">Activate Pro</button>
+
+   <div class="p-5 sm:p-7">
+    <div id="subscriptionSummary" class="rounded-2xl border border-indigo-100 bg-indigo-50 p-4 mb-5">
+     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div>
+       <div class="text-[10px] uppercase tracking-wider font-extrabold text-indigo-600">Current plan</div>
+       <div id="currentPlanName" class="text-lg font-black text-slate-900 mt-1">Free Trial</div>
+       <div id="currentPlanDetails" class="text-xs text-slate-600 mt-1">10 inspections available</div>
+      </div>
+      <div class="sm:text-right">
+       <div id="usageLabel" class="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">Usage</div>
+       <div id="usageValue" class="text-sm font-black text-slate-900 mt-1">0 / 10 inspections</div>
+      </div>
+     </div>
+     <div class="h-2 bg-white rounded-full mt-4 overflow-hidden border border-indigo-100"><div id="usageBar" class="h-full rounded-full bg-indigo-600 transition-all" style="width:0%"></div></div>
     </div>
-    <div class="rounded-2xl border-2 border-indigo-500 p-5 relative shadow-lg">
-     <div class="absolute -top-3 right-5 bg-indigo-600 text-white text-[10px] font-extrabold px-2.5 py-1 rounded-full">TEAM</div>
-     <div class="flex justify-between items-start"><div><h3 class="font-extrabold text-lg">Business</h3><p class="text-xs text-slate-500 mt-1">For multi-user inspection teams</p></div><span class="text-[10px] font-bold bg-indigo-50 text-indigo-700 px-2 py-1 rounded-full">Multi-user</span></div>
-     <div class="mt-5"><span class="text-3xl font-black">KSh 4,500</span><span class="text-slate-500 text-sm"> / month</span><div class="text-[11px] text-slate-400 mt-1">About $35 / month</div></div>
-     <ul class="mt-5 space-y-2 text-xs text-slate-600"><li>✓ Team-ready licensing</li><li>✓ Unlimited PDF exports</li><li>✓ Branded reporting</li><li>✓ M-Pesa STK Push activation</li></ul>
-     <button onclick="selectPlan('business')" class="mt-6 w-full py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-extrabold hover:bg-indigo-500">Continue with Business</button>
+
+    <div class="grid lg:grid-cols-3 gap-4">
+     <div class="rounded-2xl border border-slate-200 p-5 flex flex-col">
+      <div class="flex justify-between items-start gap-3"><div><h3 class="font-extrabold text-lg">Free Trial</h3><p class="text-xs text-slate-500 mt-1">Try the complete reporting workflow</p></div><span class="text-[10px] font-bold bg-amber-50 text-amber-700 px-2 py-1 rounded-full">FREE</span></div>
+      <div class="mt-5"><span class="text-3xl font-black">KSh 0</span><span class="text-slate-500 text-sm"> / trial</span></div>
+      <ul class="mt-5 space-y-2 text-xs text-slate-600 flex-1"><li>✓ 10 inspections</li><li>✓ 2 PDF exports</li><li>✓ Local inspection history</li><li>✓ 1 inspector</li></ul>
+      <button onclick="choosePlan('trial')" class="mt-6 w-full py-2.5 rounded-xl border border-slate-300 text-slate-700 text-xs font-extrabold hover:bg-slate-50">Use Free Trial</button>
+     </div>
+
+     <div class="rounded-2xl border border-slate-200 p-5 flex flex-col">
+      <div class="flex justify-between items-start gap-3"><div><h3 class="font-extrabold text-lg">Professional</h3><p class="text-xs text-slate-500 mt-1">For individual inspectors</p></div><span class="text-[10px] font-bold bg-slate-100 px-2 py-1 rounded-full">1 inspector</span></div>
+      <div class="mt-5"><span class="text-3xl font-black">KSh 1,500</span><span class="text-slate-500 text-sm"> / month</span></div>
+      <ul class="mt-5 space-y-2 text-xs text-slate-600 flex-1"><li>✓ 100 inspections / month</li><li>✓ Unlimited PDF exports</li><li>✓ Branded themes & typography</li><li>✓ Photo evidence workflow</li></ul>
+      <button onclick="choosePlan('professional')" class="mt-6 w-full py-2.5 rounded-xl bg-slate-900 text-white text-xs font-extrabold hover:bg-slate-800">Choose Professional</button>
+     </div>
+
+     <div class="rounded-2xl border-2 border-indigo-500 p-5 relative flex flex-col shadow-lg">
+      <div class="absolute -top-3 right-5 bg-indigo-600 text-white text-[10px] font-extrabold px-2.5 py-1 rounded-full">BUSINESS</div>
+      <div class="flex justify-between items-start gap-3"><div><h3 class="font-extrabold text-lg">Business</h3><p class="text-xs text-slate-500 mt-1">For multi-user inspection teams</p></div><span class="text-[10px] font-bold bg-indigo-50 text-indigo-700 px-2 py-1 rounded-full">5 seats</span></div>
+      <div class="mt-5"><span class="text-3xl font-black">KSh 4,000</span><span class="text-slate-500 text-sm"> / month</span></div>
+      <ul class="mt-5 space-y-2 text-xs text-slate-600 flex-1"><li>✓ 500 inspections / month</li><li>✓ Unlimited PDF exports</li><li>✓ Team-ready licensing</li><li>✓ 5 inspector seats</li></ul>
+      <button onclick="choosePlan('business')" class="mt-6 w-full py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-extrabold hover:bg-indigo-500">Choose Business</button>
+     </div>
     </div>
-   </div>
-   <div class="px-5 sm:px-7 pb-7 grid lg:grid-cols-2 gap-4">
-    <div class="rounded-2xl bg-slate-50 border border-slate-200 p-5">
-     <div class="flex gap-2 items-center"><i data-lucide="smartphone" class="w-4 h-4 text-indigo-600"></i><h3 class="font-extrabold text-sm">M-Pesa STK Push</h3></div>
-     <p class="text-[11px] text-slate-500 mt-1">Enter a Safaricom number. The configured server endpoint will request an STK prompt on the customer's phone.</p>
-     <div class="mt-4 flex gap-2"><input id="mpesaPhone" class="field flex-1" inputmode="tel" placeholder="07XXXXXXXX"><button onclick="requestMpesa()" class="px-3 rounded-lg bg-emerald-600 text-white text-xs font-extrabold">Send STK</button></div>
+
+    <div class="mt-5 rounded-2xl bg-slate-50 border border-slate-200 p-5">
+     <div class="flex items-center gap-2"><i data-lucide="shield-check" class="w-4 h-4 text-indigo-600"></i><h3 class="font-extrabold text-sm">Subscription status</h3></div>
+     <p id="subscriptionStatusText" class="text-[11px] text-slate-500 mt-1">Your plan is stored locally for this Phase 2A build. Live M-Pesa billing and server-side verification come next.</p>
+     <div class="mt-4 flex flex-col sm:flex-row gap-2">
+      <input id="mpesaPhone" class="field flex-1" inputmode="tel" placeholder="Safaricom number — Phase 2B">
+      <button onclick="startPayment()" class="px-4 py-2 rounded-lg bg-emerald-600 text-white text-xs font-extrabold">Continue to payment</button>
+     </div>
      <div id="mpesaStatus" class="text-[10px] mt-2 text-slate-500"></div>
     </div>
-    <div class="rounded-2xl bg-slate-50 border border-slate-200 p-5">
-     <div class="flex gap-2 items-center"><i data-lucide="key-round" class="w-4 h-4 text-indigo-600"></i><h3 class="font-extrabold text-sm">Activation key / M-Pesa receipt</h3></div>
-     <p class="text-[11px] text-slate-500 mt-1">Enter the activation key or receipt code supplied by your billing system to unlock 30 days of Pro access on this device.</p>
-     <div class="mt-4 flex gap-2"><input id="activationCode" class="field flex-1 font-mono uppercase" placeholder="e.g. QX7A-2026-XXXX"><button onclick="activateCode()" class="px-3 rounded-lg bg-slate-900 text-white text-xs font-extrabold">Unlock 30 days</button></div>
-     <div id="activationStatus" class="text-[10px] mt-2 text-slate-500"></div>
-    </div>
    </div>
-   <div class="px-5 sm:px-7 pb-6 text-[10px] text-slate-400">Payments are processed by your configured payment backend. Never place Safaricom consumer keys or Daraja secrets in this HTML file.</div>
+   <div class="px-5 sm:px-7 pb-6 text-[10px] text-slate-400">Payment activation is intentionally not simulated here. The next phase will connect verified M-Pesa transactions to the subscription record.</div>
   </div>
  </div>
 </div>
@@ -347,15 +373,112 @@ let sigDrawing={inspectorSig:false,clientSig:false};
 function loadState(){
  try{return Object.assign(structuredClone(DEFAULT_STATE),JSON.parse(localStorage.getItem(STORAGE+':draft'))||{});}catch(e){return structuredClone(DEFAULT_STATE)}
 }
+const PLAN_DEFS={
+ trial:{name:'Free Trial',price:0,inspectionLimit:10,pdfLimit:2,seats:1,periodDays:null},
+ professional:{name:'Professional',price:1500,inspectionLimit:100,pdfLimit:null,seats:1,periodDays:30},
+ business:{name:'Business',price:4000,inspectionLimit:500,pdfLimit:null,seats:5,periodDays:30},
+ enterprise:{name:'Enterprise',price:null,inspectionLimit:null,pdfLimit:null,seats:null,periodDays:30}
+};
+function currentUserKey(){
+ const user=window.FIELDINSPECT_AUTH_USER;
+ return user?.id||user?.email||'anonymous';
+}
+function subscriptionStorageKey(){
+ return STORAGE+':subscription:'+currentUserKey();
+}
+function defaultSubscription(){
+ return {plan:'trial',status:'TRIAL',inspectionUsed:0,pdfUsed:0,startedAt:Date.now(),currentPeriodEnd:0,paymentMethod:null,lastPaymentId:null};
+}
 function loadSubscription(){
  try{
-  const s=JSON.parse(localStorage.getItem(STORAGE+':subscription'))||{};
-  const proUntil=Number(s.proUntil||0);
-  return {reportsLeft:Number.isFinite(s.reportsLeft)?s.reportsLeft:2,proUntil,totalExported:Number(s.totalExported||0)};
- }catch(e){return {reportsLeft:2,proUntil:0,totalExported:0}}
+  const key=subscriptionStorageKey();
+  const s=JSON.parse(localStorage.getItem(key))||{};
+  const base=defaultSubscription();
+  const merged={...base,...s};
+  if(!PLAN_DEFS[merged.plan])merged.plan='trial';
+  return merged;
+ }catch(e){return defaultSubscription()}
 }
-function saveSubscription(){localStorage.setItem(STORAGE+':subscription',JSON.stringify(subscription));}
-function isPro(){return Number(subscription.proUntil)>Date.now();}
+function saveSubscription(){localStorage.setItem(subscriptionStorageKey(),JSON.stringify(subscription))}
+function getPlan(){return PLAN_DEFS[subscription.plan]||PLAN_DEFS.trial}
+function isSubscriptionActive(){
+ if(subscription.status==='TRIAL')return true;
+ if(subscription.status!=='ACTIVE')return false;
+ return !subscription.currentPeriodEnd||Number(subscription.currentPeriodEnd)>Date.now();
+}
+function canCreateInspection(){
+ const p=getPlan();
+ return isSubscriptionActive()&&(p.inspectionLimit===null||subscription.inspectionUsed<p.inspectionLimit);
+}
+function canExportPdf(){
+ const p=getPlan();
+ return isSubscriptionActive()&&(p.pdfLimit===null||subscription.pdfUsed<p.pdfLimit);
+}
+function inspectionLimitText(){
+ const p=getPlan();
+ return p.inspectionLimit===null?'Unlimited':String(p.inspectionLimit);
+}
+function pdfLimitText(){
+ const p=getPlan();
+ return p.pdfLimit===null?'Unlimited':String(p.pdfLimit);
+}
+function daysRemaining(){
+ if(!subscription.currentPeriodEnd)return null;
+ return Math.max(0,Math.ceil((subscription.currentPeriodEnd-Date.now())/86400000));
+}
+function updatePlanUI(){
+ const p=getPlan(),active=isSubscriptionActive();
+ const badge=document.getElementById('planBadge'),text=document.getElementById('planText'),dot=document.getElementById('planDot');
+ if(text)text.textContent=subscription.plan==='trial'
+   ? 'Free Trial · '+Math.max(0,p.inspectionLimit-subscription.inspectionUsed)+' inspections'
+   : (active?p.name+' · '+(daysRemaining()??30)+' days':'Subscription expired');
+ if(dot)dot.className='w-2 h-2 rounded-full '+(active?(subscription.plan==='trial'?'bg-amber-400':'bg-emerald-400'):'bg-rose-400');
+ if(badge)badge.title=p.name+' plan';
+ updateSubscriptionUI();
+}
+function updateSubscriptionUI(){
+ const p=getPlan(),used=subscription.inspectionUsed,limit=p.inspectionLimit;
+ const name=document.getElementById('currentPlanName'),details=document.getElementById('currentPlanDetails'),usage=document.getElementById('usageValue'),bar=document.getElementById('usageBar'),status=document.getElementById('subscriptionStatusText');
+ if(name)name.textContent=p.name;
+ if(details)details.textContent=(limit===null?'Unlimited':limit)+' inspections · '+pdfLimitText()+' PDF exports · '+(p.seats===null?'Unlimited':p.seats)+' seat'+(p.seats===1?'':'s');
+ if(usage)usage.textContent=limit===null?used+' inspections used':used+' / '+limit+' inspections';
+ if(bar){const pct=limit===null?Math.min(100,used/10):Math.min(100,(used/Math.max(1,limit))*100);bar.style.width=pct+'%';bar.className='h-full rounded-full transition-all '+(pct>=90?'bg-rose-500':pct>=70?'bg-amber-500':'bg-indigo-600')}
+ if(status){
+  if(subscription.plan==='trial')status.textContent='Free Trial · '+Math.max(0,p.inspectionLimit-used)+' inspections remaining. PDF exports: '+Math.max(0,p.pdfLimit-subscription.pdfUsed)+' of '+p.pdfLimit+'.';
+  else if(isSubscriptionActive())status.textContent=p.name+' is active'+(daysRemaining()!==null?' for '+daysRemaining()+' more days':'')+'. Billing integration will be connected in Phase 2B.';
+  else status.textContent='This subscription has expired. Choose a plan to reactivate it.';
+ }
+}
+function recordInspectionUsage(){
+ if(!canCreateInspection()){openPaywall('plans');toast('Your inspection allowance has been reached. Choose a plan to continue.');return false}
+ subscription.inspectionUsed++;
+ saveSubscription();updatePlanUI();return true;
+}
+function choosePlan(plan){
+ if(!PLAN_DEFS[plan])return;
+ selectedPlan=plan;
+ if(plan==='trial'){
+  if(subscription.plan==='trial'){toast('You are already using the Free Trial.');updateSubscriptionUI();return}
+  toast('Free Trial is only available before a paid subscription is activated.');
+  return;
+ }
+ document.getElementById('mpesaPhone')?.focus();
+ document.getElementById('subscriptionStatusText').textContent='Selected '+PLAN_DEFS[plan].name+'. Continue to payment to activate it.';
+}
+function startPayment(){
+ if(selectedPlan==='trial'){toast('Select Professional or Business first.');return}
+ const phone=document.getElementById('mpesaPhone')?.value.trim()||'';
+ if(!/^0?7\\d{8}$/.test(phone.replace(/\\s+/g,''))){document.getElementById('mpesaStatus').textContent='Enter a valid Safaricom number. Live M-Pesa activation will be connected in Phase 2B.';document.getElementById('mpesaStatus').className='text-[10px] mt-2 text-amber-700';return}
+ document.getElementById('mpesaStatus').textContent='Payment checkout is not live yet. Your selected plan is '+PLAN_DEFS[selectedPlan].name+'.';
+ document.getElementById('mpesaStatus').className='text-[10px] mt-2 text-indigo-600';
+}
+function openPaywall(tab='plans'){
+ updateSubscriptionUI();
+ document.getElementById('paywall').classList.remove('hidden');
+ document.body.classList.add('overflow-hidden');
+ if(window.lucide?.createIcons)lucide.createIcons();
+}
+function closePaywall(){document.getElementById('paywall').classList.add('hidden');document.body.classList.remove('overflow-hidden')}
 function persist(){
  clearTimeout(saveTimer);
  saveTimer=setTimeout(()=>{localStorage.setItem(STORAGE+':draft',JSON.stringify(state));setSaveStatus('Saved');},250);
@@ -552,7 +675,7 @@ function activateCode(){
  setTimeout(closePaywall,900);
 }
 async function handlePdf(){
- if(!isPro()&&subscription.reportsLeft<=0){openPaywall();toast('Your 2 free PDF exports are used. Choose a plan to continue.');return}
+ if(!canExportPdf()){openPaywall();toast('Your PDF export allowance has been reached. Choose a plan to continue.');return}
  const modal=document.getElementById('pdfModal');modal.classList.remove('hidden');modal.classList.add('flex');
  const status=document.getElementById('pdfStatus'),progress=document.getElementById('pdfProgress');
  try{
@@ -588,8 +711,8 @@ async function handlePdf(){
   progress.style.width='92%';status.textContent='Finalizing page numbers…';await new Promise(r=>setTimeout(r,50));
   const total=doc.internal.getNumberOfPages();for(let p=1;p<=total;p++){doc.setPage(p);footer(p,total)}
   const safe=(state.meta.projectName||'Inspection_Report').replace(/[^a-z0-9_-]+/gi,'_').slice(0,50);doc.save((state.meta.reportId||'REP')+'_'+safe+'.pdf');
-  if(!isPro()){subscription.reportsLeft=Math.max(0,subscription.reportsLeft-1)}subscription.totalExported++;saveSubscription();updatePlanUI();
-  progress.style.width='100%';status.textContent='PDF downloaded successfully.';toast(isPro()?'Pro PDF exported.':'PDF exported. '+subscription.reportsLeft+' free export'+(subscription.reportsLeft===1?'':'s')+' remaining.');
+  subscription.pdfUsed++;saveSubscription();updatePlanUI();
+  progress.style.width='100%';status.textContent='PDF downloaded successfully.';toast(subscription.plan==='trial'?'PDF exported. '+Math.max(0,getPlan().pdfLimit-subscription.pdfUsed)+' free export'+(Math.max(0,getPlan().pdfLimit-subscription.pdfUsed)===1?'':'s')+' remaining.':'PDF exported.');
  }catch(e){console.error(e);status.textContent='PDF generation failed: '+e.message;toast('PDF generation failed. Check the browser console for details.')}
  finally{setTimeout(()=>{document.getElementById('pdfModal').classList.add('hidden');document.getElementById('pdfModal').classList.remove('flex')},700)}
 }
@@ -625,6 +748,7 @@ window.addEventListener('DOMContentLoaded',init);
   const id=copy.meta.reportId||('REP-'+now.replace(/\D/g,'').slice(0,14));
   const list=readHistory();
   const existingIndex=list.findIndex(x=>x.reportId===id);
+  if(existingIndex<0 && typeof canCreateInspection==='function' && !canCreateInspection()){openPaywall('plans');toast('Your inspection allowance has been reached. Choose a plan to continue.');return;}
   const record={
    id:existingIndex>=0?list[existingIndex].id:crypto.randomUUID(),
    reportId:id,
@@ -637,7 +761,7 @@ window.addEventListener('DOMContentLoaded',init);
    updatedAt:now,
    state:copy
   };
-  if(existingIndex>=0) list[existingIndex]=record; else list.unshift(record);
+  if(existingIndex>=0) list[existingIndex]=record; else { list.unshift(record); if(typeof recordInspectionUsage==='function')recordInspectionUsage(); }
   writeHistory(list);
   renderHistory();
   toast(existingIndex>=0?'Inspection history updated.':'Inspection saved to history.');
@@ -781,6 +905,7 @@ window.submitAuth=async function(){
       const {data,error}=await supabase.auth.signUp({email,password,options:{data:{full_name:name},emailRedirectTo:authRedirectUrl()||undefined}});
       if(error)throw error;
       if(data.session){
+        authUser=data.session.user; window.FIELDINSPECT_AUTH_USER=authUser; subscription=loadSubscription(); updatePlanUI();
         authMessage('Account created successfully.','success');
         closeAuth();
       }else{
@@ -789,7 +914,7 @@ window.submitAuth=async function(){
     }else{
       const {error}=await supabase.auth.signInWithPassword({email,password});
       if(error)throw error;
-      closeAuth(); toast('Signed in successfully.');
+      closeAuth(); window.FIELDINSPECT_AUTH_USER=authUser; subscription=loadSubscription(); updatePlanUI(); toast('Signed in successfully.');
     }
   }catch(e){authMessage(e.message||'Authentication failed.')}
   finally{submit.disabled=false;submit.textContent=authMode==='signup'?'Create account':'Sign in'}
@@ -829,15 +954,15 @@ window.signOutUser=async function(){
   if(!supabase)return;
   const {error}=await supabase.auth.signOut();
   if(error){authMessage(error.message);return}
-  authUser=null; closeAuth(); updateAuthUI(); toast('Signed out.');
+  authUser=null; window.FIELDINSPECT_AUTH_USER=null; subscription=loadSubscription(); closeAuth(); updateAuthUI(); updatePlanUI(); toast('Signed out.');
 };
 window.addEventListener('DOMContentLoaded',async()=>{
   document.getElementById('authSetup')?.classList.toggle('hidden',supabaseReady);
   if(!supabase){updateAuthUI();return}
   const {data}=await supabase.auth.getSession();
-  authUser=data.session?.user||null; updateAuthUI();
+  authUser=data.session?.user||null; window.FIELDINSPECT_AUTH_USER=authUser; subscription=loadSubscription(); updateAuthUI(); updatePlanUI();
   supabase.auth.onAuthStateChange((_event,session)=>{
-    authUser=session?.user||null; updateAuthUI();
+    authUser=session?.user||null; window.FIELDINSPECT_AUTH_USER=authUser; subscription=loadSubscription(); updateAuthUI(); updatePlanUI();
   });
   const recovery=location.hash.includes('type=recovery');
   if(recovery){
