@@ -673,18 +673,51 @@ function renderDefects(){
  '<button onclick="removeDefect('+i+')" title="Delete finding" class="text-slate-400 hover:text-rose-600"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div>'+
  '<div class="grid sm:grid-cols-2 gap-2"><label class="text-[10px] uppercase font-bold text-slate-500">Severity<select onchange="updateItem('+i+',\'severity\',this.value)" class="field !mt-1 !py-1.5"><option '+(it.severity==='high'?'selected':'')+' value="high">High / Critical</option><option '+(it.severity==='medium'?'selected':'')+' value="medium">Medium / Monitor</option><option '+(it.severity==='low'?'selected':'')+' value="low">Low / Advisory</option></select></label><label class="text-[10px] uppercase font-bold text-slate-500">Area / zone<input value="'+escapeHtml(it.location)+'" oninput="updateItem('+i+',\'location\',this.value)" class="field !mt-1 !py-1.5" placeholder="Main panel"></label></div>'+
  '<label class="block text-[10px] uppercase font-bold text-slate-500">Field notes <span class="normal-case font-medium text-slate-400">Press Enter for the next bullet</span><textarea onkeydown="handleNotesKey(event,'+i+')" oninput="updateItem('+i+',\'notes\',this.value)" class="field bullet-editor !mt-1 min-h-[110px] resize-y" placeholder="• Observation\n• Recommendation">'+escapeHtml(it.notes)+'</textarea></label>'+
- '<div class="flex items-center gap-3"><label class="flex-1"><span class="text-[10px] uppercase font-bold text-slate-500">Photo evidence</span><input type="file" accept="image/*" multiple onchange="addPhotos('+i+',this.files)" class="block w-full mt-1 text-[11px] text-slate-500 file:mr-2 file:rounded-lg file:border-0 file:bg-slate-200 file:px-2 file:py-1.5 file:text-[10px] file:font-bold"></label><div class="text-[10px] text-slate-400 shrink-0">Auto-compressed</div></div>'+
+ '<div class="flex items-center gap-3"><label class="flex-1"><span class="text-[10px] uppercase font-bold text-slate-500">Photo evidence</span><input type="file" accept="image/*" multiple onchange="addPhotos('+i+',this.files);this.value=\'\'" class="block w-full mt-1 text-[11px] text-slate-500 file:mr-2 file:rounded-lg file:border-0 file:bg-slate-200 file:px-2 file:py-1.5 file:text-[10px] file:font-bold"></label><div class="text-[10px] text-slate-400 shrink-0">Up to 6 · auto-compressed</div></div>'+
  '<div class="grid grid-cols-4 sm:grid-cols-6 gap-2">'+(it.photos||[]).map((p,j)=>'<div class="relative"><img src="'+p.data+'" class="photo-thumb w-full rounded-lg border border-slate-200"><button onclick="removePhoto('+i+','+j+')" class="absolute -top-1 -right-1 w-5 h-5 bg-slate-900 text-white rounded-full text-[10px]">×</button></div>').join('')+'</div>'+
  '</article>').join('');
  lucide.createIcons();
 }
 async function addPhotos(i,files){
- for(const file of [...files].slice(0,6)){
-  try{const compressed=await compressImage(file,1400,.78);state.items[i].photos=state.items[i].photos||[];state.items[i].photos.push({data:compressed,name:file.name});}catch(e){toast('Could not process '+file.name)}
+ const item=state.items[i];
+ if(!item)return;
+ item.photos=item.photos||[];
+ const remaining=Math.max(0,6-item.photos.length);
+ const selected=[...files].slice(0,remaining);
+ if(!selected.length){
+  toast('Each finding can contain up to 6 photos.');
+  return;
  }
- renderDefects();persist();renderReport();
+ if(files.length>remaining)toast('Only '+remaining+' more photo'+(remaining===1?' is':'s are')+' allowed for this finding.');
+ for(const file of selected){
+  if(!file?.type?.startsWith('image/')){
+   toast(file?.name+' is not an image file.');
+   continue;
+  }
+  if(file.size>12*1024*1024){
+   toast(file.name+' is too large. Maximum source size is 12 MB.');
+   continue;
+  }
+  try{
+   const compressed=await compressImage(file,1400,.78);
+   item.photos.push({data:compressed,name:file.name});
+  }catch(e){
+   console.error('FieldInspect photo processing failed:',e);
+   toast('Could not process '+file.name);
+  }
+ }
+ renderDefects();
+ persist();
+ renderReport();
 }
-function removePhoto(i,j){state.items[i].photos.splice(j,1);renderDefects();persist();renderReport()}
+function removePhoto(i,j){
+ const photos=state.items[i]?.photos;
+ if(!photos)return;
+ photos.splice(j,1);
+ renderDefects();
+ persist();
+ renderReport();
+}
 function compressImage(file,maxSide=1400,quality=.78){
  return new Promise((resolve,reject)=>{
   const url=URL.createObjectURL(file),img=new Image();
