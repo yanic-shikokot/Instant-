@@ -1006,7 +1006,26 @@ window.addEventListener('DOMContentLoaded',init);
   if(window.lucide?.createIcons)lucide.createIcons();
  };
  window.openHistoryRecord=function(id){const r=readHistory().find(x=>x.id===id);if(!r)return;state=structuredClone(r.state);state.meta.workflowStatus=r.status||'draft';persistNow();bindFields();renderDefects();renderAttachments();if(typeof applyTheme==='function')applyTheme();renderReport();if(typeof setupSignatures==='function')setTimeout(setupSignatures,0);closeHistory();toast('Loaded '+state.meta.reportId+' for editing.')};
- window.duplicateHistoryRecord=function(id){const r=readHistory().find(x=>x.id===id);if(!r)return;state=structuredClone(r.state);state.meta.reportId=makeId();state.meta.projectName=(state.meta.projectName||'Inspection')+' — Copy';state.meta.workflowStatus='draft';persistNow();bindFields();renderDefects();renderAttachments();renderReport();closeHistory();toast('Inspection duplicated as a new draft.')};
+ window.duplicateHistoryRecord=function(id){
+ const r=readHistory().find(x=>x.id===id);
+ if(!r)return;
+ state=structuredClone(r.state);
+ state.meta.reportId=makeId();
+ state.meta.projectName=(state.meta.projectName||'Inspection')+' — Copy';
+ state.meta.workflowStatus='draft';
+ persistNow();
+ bindFields();
+ renderDefects();
+ renderAttachments();
+ renderReport();
+ const saved=window.saveCurrentToHistory?.();
+ if(!saved?.saved){
+  toast('Inspection was duplicated locally, but could not be saved to History. Check browser storage or your inspection allowance.');
+  return;
+ }
+ closeHistory();
+ toast('Inspection duplicated and saved as a new draft.');
+};
  window.archiveHistoryRecord=function(id){const list=readHistory(),i=list.findIndex(x=>x.id===id);if(i<0)return;list[i].status=list[i].status==='archived'?'draft':'archived';list[i].state.meta.workflowStatus=list[i].status;list[i].updatedAt=new Date().toISOString();if(writeHistory(list)){renderHistory();toast(list[i].status==='archived'?'Inspection archived.':'Inspection restored.')}};
  window.deleteHistoryRecord=function(id){const list=readHistory(),i=list.findIndex(x=>x.id===id);if(i<0||!confirm('Move this inspection to Recently Deleted?'))return;const r=list[i],next=list.filter(x=>x.id!==id);if(!writeHistory(next))return;r.deletedAt=new Date().toISOString();const trash=readTrash();trash.unshift(r);if(!writeTrash(trash))return;renderHistory();toast('Inspection moved to Recently Deleted.')};
  window.openTrash=function(){document.getElementById('trashModal').classList.remove('hidden');document.body.classList.add('overflow-hidden');renderTrash()};
