@@ -98,6 +98,7 @@ async function pull(){
 }
 
 async function push(){
+  const supabase=getSupabase();
   if(!supabase||!user()) return;
   const local=readHistory();
   if(!local.length) return;
