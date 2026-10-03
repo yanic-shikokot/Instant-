@@ -1265,8 +1265,11 @@ window.duplicateHistoryRecord=async function(id){
  if(!confirm('Permanently delete this inspection? This cannot be undone.'))return;
  const r=trash[i];
  try{
-  if(window.FIELDINSPECT_AUTH_USER&&window.FIELDINSPECT_DELETE_CLOUD_INSPECTION)await window.FIELDINSPECT_DELETE_CLOUD_INSPECTION(r.id);
-  if(window.FIELDINSPECT_AUTH_USER&&window.FIELDINSPECT_STORAGE?.deleteInspectionEvidence&&r?.state?.meta?.storageId)await window.FIELDINSPECT_STORAGE.deleteInspectionEvidence(r.state.meta.storageId);
+  if(window.FIELDINSPECT_AUTH_USER){
+   if(typeof window.FIELDINSPECT_DELETE_CLOUD_INSPECTION!=='function')throw new Error('Cloud deletion service is unavailable.');
+   await window.FIELDINSPECT_DELETE_CLOUD_INSPECTION(r.id);
+   if(window.FIELDINSPECT_STORAGE?.deleteInspectionEvidence&&r?.state?.meta?.storageId)await window.FIELDINSPECT_STORAGE.deleteInspectionEvidence(r.state.meta.storageId);
+  }
  }catch(e){
   console.error('FieldInspect permanent cloud deletion failed:',e);
   toast('Cloud cleanup failed. The inspection remains in Recently Deleted so nothing is lost.');
@@ -1291,6 +1294,10 @@ window.purgeAllDeleted=async function(){
    if(remaining.length)toast(deleted+' permanently deleted. '+remaining.length+' kept in Recently Deleted because cloud cleanup failed.');
    else toast(trash.length+' recently deleted inspection(s) permanently removed.');
   }else{
+   if(window.FIELDINSPECT_AUTH_USER){
+    toast('Cloud deletion service is not available. Nothing was removed from Recently Deleted.');
+    return;
+   }
    if(writeTrash([])){renderTrash();toast(trash.length+' recently deleted inspection(s) permanently removed.')}
   }
  }finally{if(btn)btn.disabled=false}
