@@ -958,6 +958,10 @@ window.addEventListener('DOMContentLoaded',init);
    return false;
   }
  }
+ // Autosave runs in the main application script, so expose these history helpers
+ // explicitly instead of relying on scope across separate script sections.
+ window.readHistory=readHistory;
+ window.writeHistory=writeHistory;
  function snapshotState(){return JSON.parse(JSON.stringify(state));}
 
  window.saveCurrentToHistory=function(){
