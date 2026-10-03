@@ -1,7 +1,9 @@
-import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/+esm';
 
 const cfg = window.FIELDINSPECT_AUTH || {};
 let fallbackSupabase = null;
+let syncPromise = null;
+
 function getSupabase(){
   if(window.FIELDINSPECT_SUPABASE) return window.FIELDINSPECT_SUPABASE;
   if(!fallbackSupabase && cfg.SUPABASE_URL && cfg.SUPABASE_PUBLISHABLE_KEY){
@@ -9,39 +11,86 @@ function getSupabase(){
   }
   return fallbackSupabase;
 }
-
+function user(){return window.FIELDINSPECT_AUTH_USER||null;}
 function historyKey(){
-  const current=window.FIELDINSPECT_AUTH_USER||null;
-  const key=current?.id||current?.email||'anonymous';
-  return 'fieldinspect-pro-v2:history:'+key;
+  const u=user();
+  return 'fieldinspect-pro-v2:history:'+(u?.id||u?.email||'anonymous');
 }
-
+function trashKey(){
+  const u=user();
+  return 'fieldinspect-pro-v2:trash:'+(u?.id||u?.email||'anonymous');
+}
 function readHistory(){
-  if(typeof window.readHistory==='function') return window.readHistory();
+  if(typeof window.readHistory==='function')return window.readHistory();
   try{
-    const value=JSON.parse(localStorage.getItem(historyKey())||'[]');
-    return Array.isArray(value)?value:[];
-  }catch(e){
-    console.error('FieldInspect cloud history read failed:',e);
-    return [];
-  }
+    const v=JSON.parse(localStorage.getItem(historyKey())||'[]');
+    return Array.isArray(v)?v:[];
+  }catch(e){return[]}
 }
-
 function writeHistory(list){
-  if(typeof window.writeHistory==='function') return window.writeHistory(list);
+  if(typeof window.writeHistory==='function')return window.writeHistory(list);
+  try{localStorage.setItem(historyKey(),JSON.stringify(Array.isArray(list)?list.slice(0,100):[]));return true}
+  catch(e){console.error('FieldInspect history write failed:',e);return false}
+}
+function readTrash(){
+  if(typeof window.readTrash==='function')return window.readTrash();
   try{
-    localStorage.setItem(historyKey(),JSON.stringify(list.slice(0,100)));
-    return true;
-  }catch(e){
-    console.error('FieldInspect cloud history write failed:',e);
-    return false;
-  }
+    const v=JSON.parse(localStorage.getItem(trashKey())||'[]');
+    return Array.isArray(v)?v:[];
+  }catch(e){return[]}
 }
-
-function user(){
-  return window.FIELDINSPECT_AUTH_USER||null;
+function setCloudStatus(state,message='',count=null){
+  const payload={state,at:new Date().toISOString(),message:message||'',count};
+  window.FIELDINSPECT_CLOUD_STATUS=payload;
+  const el=document.getElementById('cloudSyncText');
+  if(!el)return;
+  const labels={
+    idle:'Cloud ready',
+    syncing:'Syncing…',
+    synced:'Cloud synced',
+    merged:'Cloud merged',
+    partial:'Cloud partly synced',
+    error:'Cloud sync error',
+    offline:'Offline',
+    signedout:'Sign in to sync'
+  };
+  el.textContent=labels[state]||state;
+  el.title=message||labels[state]||state;
+  el.className='text-[10px] font-bold '+(
+    state==='synced'?'text-emerald-600':
+    state==='error'?'text-rose-600':
+    state==='offline'?'text-amber-600':
+    state==='signedout'?'text-slate-400':
+    'text-indigo-600'
+  );
 }
-
+function normalizeStatus(value){
+  return ['draft','in-progress','completed','archived'].includes(value)?value:'draft';
+}
+function serializeState(state){
+  return typeof window.FIELDINSPECT_SERIALIZE_STATE==='function'
+    ? window.FIELDINSPECT_SERIALIZE_STATE(state)
+    : JSON.parse(JSON.stringify(state||{}));
+}
+function buildRemoteState(record){
+  const s=record?.data&&typeof record.data==='object'?structuredClone(record.data):{};
+  s.meta=s.meta||{};
+  s.meta.reportId=s.meta.reportId||record.local_id||record.id;
+  s.meta.storageId=s.meta.storageId||s.meta.reportId;
+  s.meta.workflowStatus=normalizeStatus(record.status||s.meta.workflowStatus);
+  s.items=Array.isArray(s.items)?s.items.map(item=>({
+    ...item,
+    photos:Array.isArray(item.photos)?item.photos.map(photo=>({
+      ...photo,
+      id:photo.id||('PHOTO-'+crypto.randomUUID())
+    })):[]
+  })):[];
+  s.attachments=Array.isArray(s.attachments)?s.attachments.map(a=>({
+    ...a,
+    id:a.id||('DOC-'+crypto.randomUUID())
+  })):[];
+  return s;
+}
 function cloudRow(record){
   const s=record.state||{},m=s.meta||{};
   return {
@@ -50,97 +99,131 @@ function cloudRow(record){
     title:record.projectName||m.projectName||'Untitled inspection',
     client_name:record.clientName||m.clientName||'',
     site_name:record.siteLocation||m.siteLocation||'',
-    status:record.status||'draft',
+    status:normalizeStatus(record.status||m.workflowStatus),
     inspection_date:record.inspectionDate||m.inspectionDate||null,
-    data:(typeof window.FIELDINSPECT_SERIALIZE_STATE==='function'?window.FIELDINSPECT_SERIALIZE_STATE(s):s),
+    data:serializeState(s),
     updated_at:record.updatedAt||new Date().toISOString()
   };
 }
-
 async function pull(){
-  const supabase=getSupabase();
-  if(!supabase||!user()) return;
+  const supabase=getSupabase(),u=user();
+  if(!supabase||!u)return {count:0};
   const {data,error}=await supabase.from('inspections')
     .select('id,local_id,title,client_name,site_name,status,inspection_date,data,created_at,updated_at')
-    .eq('user_id',user().id)
+    .eq('user_id',u.id)
     .order('updated_at',{ascending:false});
-  if(error) throw error;
+  if(error)throw error;
 
   const local=readHistory();
-  const map=new Map(local.map(x=>[x.id,x]));
+  const trashed=new Set(readTrash().map(x=>x?.id).filter(Boolean));
+  const map=new Map(local.filter(x=>!trashed.has(x.id)).map(x=>[x.id,x]));
 
-  for(const r of (data||[])){
-    const s=r.data||{},existing=map.get(r.local_id);
-    const remoteTime=Date.parse(r.updated_at||r.created_at||0)||0;
+  for(const remote of (data||[])){
+    if(!remote.local_id||trashed.has(remote.local_id))continue;
+    const existing=map.get(remote.local_id);
+    const remoteTime=Date.parse(remote.updated_at||remote.created_at||0)||0;
     const localTime=Date.parse(existing?.updatedAt||0)||0;
     if(!existing||remoteTime>localTime){
-      map.set(r.local_id,{
-        id:r.local_id,
-        reportId:s?.meta?.reportId||r.local_id,
-        projectName:r.title||s?.meta?.projectName||'Untitled inspection',
-        clientName:r.client_name||s?.meta?.clientName||'',
-        inspectorName:s?.meta?.inspectorName||'',
-        siteLocation:r.site_name||s?.meta?.siteLocation||'',
-        inspectionDate:r.inspection_date||s?.meta?.inspectionDate||'',
-        overallStatus:s?.meta?.overallStatus||'Attention required',
-        status:r.status||s?.meta?.workflowStatus||'draft',
-        createdAt:r.created_at||new Date().toISOString(),
-        updatedAt:r.updated_at||r.created_at||new Date().toISOString(),
+      const s=buildRemoteState(remote);
+      map.set(remote.local_id,{
+        id:remote.local_id,
+        reportId:s.meta.reportId,
+        projectName:remote.title||s.meta.projectName||'Untitled inspection',
+        clientName:remote.client_name||s.meta.clientName||'',
+        inspectorName:s.meta.inspectorName||'',
+        siteLocation:remote.site_name||s.meta.siteLocation||'',
+        inspectionDate:remote.inspection_date||s.meta.inspectionDate||'',
+        overallStatus:s.meta.overallStatus||'Attention required',
+        status:normalizeStatus(remote.status||s.meta.workflowStatus),
+        createdAt:remote.created_at||new Date().toISOString(),
+        updatedAt:remote.updated_at||remote.created_at||new Date().toISOString(),
         state:s
       });
     }
   }
 
   const merged=[...map.values()].sort((a,b)=>Date.parse(b.updatedAt||0)-Date.parse(a.updatedAt||0));
-  window.FIELDINSPECT_CLOUD_STATUS={state:'merged',at:new Date().toISOString(),count:merged.length};
-  if(!writeHistory(merged)) throw new Error('Cloud history could not be written locally. Cloud records were not deleted.');
-  if(typeof window.renderHistory==='function') window.renderHistory();
+  if(!writeHistory(merged))throw new Error('Cloud history could not be written locally. Remote data was not deleted.');
+  if(typeof window.renderHistory==='function')window.renderHistory();
+  setCloudStatus('merged','Remote history merged.',merged.length);
+  return {count:merged.length};
 }
-
 async function push(){
-  const supabase=getSupabase();
-  if(!supabase||!user()) return;
-  const local=readHistory();
-  if(!local.length) return;
-  const rows=local.map(cloudRow);
-  const {error}=await supabase.from('inspections').upsert(rows,{onConflict:'user_id,local_id'});
-  if(error){
-    window.FIELDINSPECT_CLOUD_STATUS={state:'error',at:new Date().toISOString(),message:error.message||'Cloud upload failed'};
-    throw error;
+  const supabase=getSupabase(),u=user();
+  if(!supabase||!u)return {count:0,failed:[]};
+  const trashed=new Set(readTrash().map(x=>x?.id).filter(Boolean));
+  const local=readHistory().filter(x=>x?.id&&!trashed.has(x.id));
+  const failed=[];
+  let pushed=0;
+  for(const record of local){
+    try{
+      const {error}=await supabase.from('inspections').upsert(
+        cloudRow(record),
+        {onConflict:'user_id,local_id'}
+      );
+      if(error)throw error;
+      pushed++;
+    }catch(error){
+      failed.push({id:record.id,message:error?.message||'Cloud upload failed',code:error?.code||''});
+      console.error('FieldInspect cloud record push failed:',record.id,error);
+    }
   }
-  window.FIELDINSPECT_CLOUD_STATUS={state:'pushed',at:new Date().toISOString(),count:rows.length};
+  return {count:pushed,failed};
 }
-
 async function deleteCloudRecord(localId){
-  const supabase=getSupabase();
-  if(!supabase||!user()||!localId) return;
+  const supabase=getSupabase(),u=user();
+  if(!supabase||!u||!localId)return;
   const {error}=await supabase.from('inspections')
     .delete()
-    .eq('user_id',user().id)
+    .eq('user_id',u.id)
     .eq('local_id',localId);
-  if(error) throw error;
+  if(error)throw error;
 }
-
-window.FIELDINSPECT_DELETE_CLOUD_INSPECTION=async function(localId){
-  if(!user()) return;
-  await deleteCloudRecord(localId);
-};
-
-let syncPromise=null;
-async function sync(options={}){
-  const supabase=getSupabase();
-  if(!supabase||!user()) return {ok:false,reason:'not-authenticated'};
-  if(syncPromise) return syncPromise;
-  syncPromise=(async()=>{
+async function deleteCloudRecords(records){
+  const list=Array.isArray(records)?records:[];
+  const failed=[];
+  for(const record of list){
     try{
-      if(!options.skipPull) await pull();
-      await push();
-      await pull();
-      window.FIELDINSPECT_CLOUD_STATUS={state:'synced',at:new Date().toISOString(),count:readHistory().length};
-      return {ok:true};
+      await deleteCloudRecord(record?.id);
+      if(window.FIELDINSPECT_STORAGE?.deleteInspectionEvidence&&record?.state?.meta?.storageId){
+        await window.FIELDINSPECT_STORAGE.deleteInspectionEvidence(record.state.meta.storageId);
+      }
+    }catch(error){
+      failed.push({id:record?.id,message:error?.message||'Cloud deletion failed'});
+      console.error('FieldInspect cloud permanent deletion failed:',record?.id,error);
+    }
+  }
+  return {ok:failed.length===0,failed};
+}
+async function sync(options={}){
+  const supabase=getSupabase(),u=user();
+  if(!supabase||!u){
+    setCloudStatus(navigator.onLine?'signedout':'offline','Sign in to synchronize inspections.');
+    return {ok:false,reason:'not-authenticated'};
+  }
+  if(!navigator.onLine){
+    setCloudStatus('offline','No internet connection. Local inspections are safe and will sync when online.');
+    return {ok:false,reason:'offline'};
+  }
+  if(syncPromise)return syncPromise;
+
+  syncPromise=(async()=>{
+    setCloudStatus('syncing','Synchronizing inspections…');
+    try{
+      const pulled=await pull();
+      const deleted=await deleteCloudRecords(readTrash());
+      const pushed=await push();
+      const finalPull=await pull();
+      const totalFailures=deleted.failed.length+pushed.failed.length;
+      const ok=totalFailures===0;
+      const detail=ok
+        ? 'Local and cloud inspection history are synchronized.'
+        : totalFailures+' cloud operation(s) still need retry.';
+      setCloudStatus(ok?'synced':'partial',detail,finalPull.count);
+      return {ok,reason:ok?'synced':'partial',pulled,deleted,pushed,finalPull};
     }catch(error){
       console.error('FieldInspect cloud sync failed:',error);
-      window.FIELDINSPECT_CLOUD_STATUS={state:'error',at:new Date().toISOString(),message:error?.message||'Cloud sync failed'};
+      setCloudStatus('error',error?.message||'Cloud synchronization failed.');
       return {ok:false,error};
     }finally{
       syncPromise=null;
@@ -150,6 +233,16 @@ async function sync(options={}){
 }
 
 window.FIELDINSPECT_SYNC_INSPECTIONS=sync;
+window.FIELDINSPECT_DELETE_CLOUD_INSPECTION=deleteCloudRecord;
+window.FIELDINSPECT_PURGE_CLOUD_DELETED=deleteCloudRecords;
+window.FIELDINSPECT_SYNC_NOW=async function(){
+  const result=await sync({manual:true});
+  if(result.ok)toast('Cloud sync completed.');
+  else if(result.reason==='offline')toast('You are offline. Local inspections are safe and will sync automatically when you reconnect.');
+  else if(result.reason==='not-authenticated')toast('Sign in to synchronize your inspections.');
+  else toast('Cloud sync needs attention. Your local inspections are preserved.');
+  return result;
+};
 window.FIELDINSPECT_CLOUD_STATUS={state:'idle',at:new Date().toISOString()};
 
 async function boot(){
@@ -158,10 +251,8 @@ async function boot(){
     window.saveCurrentToHistory=async function(){
       const saveResult=await original.apply(this,arguments);
       if(user()&&saveResult?.saved){
-        sync().then(async result=>{
-          if(result.ok){toast('Inspection saved and synced to cloud.');if(window.FIELDINSPECT_REFRESH_SUBSCRIPTION)await window.FIELDINSPECT_REFRESH_SUBSCRIPTION().catch(e=>console.error('FieldInspect subscription refresh failed:',e));}
-          else toast('Inspection saved locally. Cloud sync will retry when available.');
-        }).catch(error=>console.error('FieldInspect post-save cloud sync failed:',error));
+        const result=await sync();
+        if(!result.ok)toast('Inspection saved locally. Cloud sync will retry automatically.');
       }
       return saveResult;
     };
@@ -171,19 +262,10 @@ async function boot(){
   if(typeof window.deleteHistoryRecord==='function'&&!window.__cloudDeleteWrapped){
     const originalDelete=window.deleteHistoryRecord;
     window.deleteHistoryRecord=function(id){
-      const beforeRecords=readHistory();
-      const before=beforeRecords.length;
-      const removed=beforeRecords.find(x=>x.id===id);
+      const before=readHistory();
       const result=originalDelete.apply(this,arguments);
-      if(user()&&readHistory().length<before){
-        deleteCloudRecord(id).then(async()=>{
-          try{if(window.FIELDINSPECT_STORAGE?.deleteInspectionEvidence)await window.FIELDINSPECT_STORAGE.deleteInspectionEvidence(removed?.state?.meta?.storageId||removed?.reportId)}catch(e){console.error('FieldInspect cloud evidence delete failed:',e);toast('Inspection deleted, but some cloud evidence may remain.');}
-          if(window.FIELDINSPECT_REFRESH_SUBSCRIPTION)await window.FIELDINSPECT_REFRESH_SUBSCRIPTION().catch(e=>console.error('FieldInspect subscription refresh failed:',e));
-          toast('Inspection deleted and cloud history synced.');
-        }).catch(error=>{
-          console.error('FieldInspect cloud delete failed:',error);
-          toast('Inspection deleted locally. Cloud delete will retry on the next sync.');
-        });
+      if(user()&&readHistory().length<before.length){
+        sync().catch(error=>console.error('FieldInspect delete sync failed:',error));
       }
       return result;
     };
@@ -193,10 +275,10 @@ async function boot(){
   await sync();
 }
 
-window.addEventListener('DOMContentLoaded',()=>setTimeout(boot,0));
-window.addEventListener('fieldinspect:auth-changed',()=>setTimeout(boot,0));
+window.addEventListener('DOMContentLoaded',()=>setTimeout(boot,150));
+window.addEventListener('fieldinspect:auth-changed',()=>setTimeout(boot,100));
 window.addEventListener('online',()=>setTimeout(()=>sync(),500));
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)setTimeout(()=>sync(),300)});
 if(getSupabase()?.auth){
-  getSupabase().auth.onAuthStateChange(()=>setTimeout(boot,0));
+  getSupabase().auth.onAuthStateChange(()=>setTimeout(boot,100));
 }
