@@ -460,7 +460,7 @@ function updateSubscriptionUI(){
  if(bar){const pct=limit===null?Math.min(100,used/10):Math.min(100,(used/Math.max(1,limit))*100);bar.style.width=pct+'%';bar.className='h-full rounded-full transition-all '+(pct>=90?'bg-rose-500':pct>=70?'bg-amber-500':'bg-indigo-600')}
  if(status){
   if(subscription.plan==='trial')status.textContent='Free Trial · '+Math.max(0,p.inspectionLimit-used)+' inspections remaining. PDF exports: '+Math.max(0,p.pdfLimit-subscription.pdfUsed)+' of '+p.pdfLimit+'.';
-  else if(isSubscriptionActive())status.textContent=p.name+' is active'+(daysRemaining()!==null?' for '+daysRemaining()+' more days':'')+'. Billing integration will be connected in Phase 2B.';
+  else if(isSubscriptionActive())status.textContent=p.name+' is active'+(daysRemaining()!==null?' for '+daysRemaining()+' more days':'')+'. Subscription limits are managed from your account.';
   else status.textContent='This subscription has expired. Choose a plan to reactivate it.';
  }
 }
@@ -1453,6 +1453,22 @@ window.signOutUser=async function(){
   if(error){authMessage(error.message);return}
   authUser=null; window.FIELDINSPECT_AUTH_USER=null; subscription=loadSubscription(); closeAuth(); updateAuthUI(); updatePlanUI(); toast('Signed out.');
 };
+window.FIELDINSPECT_REFRESH_SUBSCRIPTION=syncCloudSubscription;
+
+window.FIELDINSPECT_RECORD_PDF_EXPORT=async function(referenceId){
+  if(!supabase||!authUser?.id||!referenceId)return false;
+  const {error}=await supabase.from('usage_events').insert({
+    user_id:authUser.id,
+    kind:'pdf_export',
+    reference_id:String(referenceId)
+  });
+  if(error){
+    console.error('FieldInspect PDF usage record failed:',error);
+    return false;
+  }
+  return true;
+};
+
 window.addEventListener('DOMContentLoaded',async()=>{
   document.getElementById('authSetup')?.classList.toggle('hidden',supabaseReady);
   if(!supabase){updateAuthUI();return}
