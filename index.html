@@ -140,6 +140,16 @@ if (!window.FIELDINSPECT_AUTH?.SUPABASE_URL || !window.FIELDINSPECT_AUTH?.SUPABA
   </div>
 
   <div class="rounded-2xl border border-slate-200 overflow-hidden">
+   <div class="bg-slate-50 px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+    <div class="flex items-center gap-2 font-bold text-sm"><i data-lucide="paperclip" class="w-4 h-4 theme-accent"></i>Supporting documents</div>
+    <span class="text-[10px] text-slate-400">Up to 3 files · 3 MB each</span>
+   </div>
+   <div class="p-4">
+    <input type="file" accept=".pdf,.txt,.csv,.doc,.docx,.xls,.xlsx" multiple onchange="addAttachments(this.files);this.value=''" class="block w-full text-[11px] text-slate-500 file:mr-2 file:rounded-lg file:border-0 file:bg-slate-200 file:px-2 file:py-1.5 file:text-[10px] file:font-bold">
+    <div id="attachmentsList" class="mt-3 space-y-2"></div>
+   </div>
+  </div>
+  <div class="rounded-2xl border border-slate-200 overflow-hidden">
    <div class="bg-slate-50 px-4 py-3 flex items-center gap-2 font-bold text-sm"><i data-lucide="pen-line" class="w-4 h-4 theme-accent"></i>Digital signatures</div>
    <div class="p-4 grid md:grid-cols-2 gap-4">
     <div><div class="text-[11px] font-bold text-slate-500 mb-1">Inspector signature</div><div class="border border-slate-300 rounded-xl overflow-hidden"><canvas id="inspectorSig" class="sig-canvas"></canvas></div><button onclick="clearSig('inspectorSig')" class="mt-1 text-[11px] text-rose-600 font-semibold">Clear</button></div>
@@ -344,7 +354,8 @@ const DEFAULT_STATE={
  items:[],
  theme:'violet',
  font:'sans',
- signatures:{inspector:'',client:''}
+ signatures:{inspector:'',client:''},
+ attachments:[]
 };
 let state=loadState();
 let subscription=loadSubscription();
@@ -361,6 +372,7 @@ function loadState(){
    ...saved,
    meta:{...structuredClone(DEFAULT_STATE.meta),...(saved.meta||{})},
    signatures:{...structuredClone(DEFAULT_STATE.signatures),...(saved.signatures||{})},
+   attachments:Array.isArray(saved.attachments)?saved.attachments:[],
    items:Array.isArray(saved.items)?saved.items.map(item=>({...item,risk:item.risk||'',recommendation:item.recommendation||'',photos:Array.isArray(item.photos)?item.photos.map(p=>({...p,caption:p.caption||''})):[]})):[]
   };
  }catch(e){
@@ -575,7 +587,7 @@ window.addEventListener('pagehide',()=>{ autoSaveDraftToHistory('beforeunload');
 function init(){
  if(!state.meta.reportId)state.meta.reportId=makeId();
  if(!state.meta.inspectionDate)state.meta.inspectionDate=today();
- bindFields();renderThemes();renderDefects();renderReport();setupSignatures();updatePlanUI();lucide.createIcons();
+ bindFields();renderThemes();renderDefects();renderAttachments();renderReport();setupSignatures();updatePlanUI();lucide.createIcons();
  window.addEventListener('resize',fitPreview);
  fitPreview();
 }
@@ -674,7 +686,7 @@ function newInspection(){
  if(!confirm('Start a new inspection? Your current work will be automatically saved to History first.'))return;
  const saved=autoSaveDraftToHistory('new-inspection');
  if(hasInspectionContent()&&!saved){toast('Current inspection could not be saved. New inspection was not started.');return}
- state=structuredClone(DEFAULT_STATE);state.meta.reportId=makeId();state.meta.inspectionDate=today();state.meta.workflowStatus='draft';persistNow();bindFields();renderDefects();renderReport();setupSignatures();toast(saved?'Current work saved. New inspection started.':'New inspection started.');
+ state=structuredClone(DEFAULT_STATE);state.meta.reportId=makeId();state.meta.inspectionDate=today();state.meta.workflowStatus='draft';persistNow();bindFields();renderDefects();renderAttachments();renderReport();setupSignatures();toast(saved?'Current work saved. New inspection started.':'New inspection started.');
 }
 function loadSample(){
  state.meta={reportId:makeId(),inspectionDate:today(),projectName:'Electrical Installation & Safety Inspection',inspectorName:'Alex Morgan',clientName:'Apex Facilities Ltd',siteLocation:'Nairobi Industrial Area',conditions:'Dry · equipment operational',overallStatus:'Attention required'};
@@ -733,7 +745,7 @@ function renderDefects(){
    '<div class="grid sm:grid-cols-2 gap-2"><label class="text-[10px] uppercase font-bold text-slate-500">Risk / impact<input value="'+escapeHtml(it.risk||'')+'" oninput="updateItem('+i+',\'risk\',this.value)" class="field !mt-1 !py-1.5" placeholder="Shock hazard, fire risk, service interruption…"></label><label class="text-[10px] uppercase font-bold text-slate-500">Recommendation<input value="'+escapeHtml(it.recommendation||'')+'" oninput="updateItem('+i+',\'recommendation\',this.value)" class="field !mt-1 !py-1.5" placeholder="Corrective action required…"></label></div>'+
    '<label class="block text-[10px] uppercase font-bold text-slate-500">Field notes <span class="normal-case font-medium text-slate-400">Press Enter for the next bullet</span><textarea onkeydown="handleNotesKey(event,'+i+')" oninput="updateItem('+i+',\'notes\',this.value)" class="field bullet-editor !mt-1 min-h-[110px] resize-y" placeholder="• Observation">'+escapeHtml(it.notes)+'</textarea></label>'+
    '<div class="flex items-center gap-3"><label class="flex-1"><span class="text-[10px] uppercase font-bold text-slate-500">Photo evidence</span><input type="file" accept="image/*" multiple onchange="addPhotos('+i+',this.files);this.value=\'\'" class="block w-full mt-1 text-[11px] text-slate-500 file:mr-2 file:rounded-lg file:border-0 file:bg-slate-200 file:px-2 file:py-1.5 file:text-[10px] file:font-bold"></label><div class="text-[10px] text-slate-400 shrink-0">Up to 6 · auto-compressed</div></div>'+
-   '<div class="grid grid-cols-2 sm:grid-cols-3 gap-2">'+it.photos.map((p,j)=>'<div class="relative"><img src="'+p.data+'" class="photo-thumb w-full rounded-lg border border-slate-200"><button onclick="removePhoto('+i+','+j+')" class="absolute -top-1 -right-1 w-5 h-5 bg-slate-900 text-white rounded-full text-[10px]">×</button><input value="'+escapeHtml(p.caption||'')+'" oninput="updatePhotoCaption('+i+','+j+',this.value)" class="w-full mt-1 text-[10px] border border-slate-200 rounded-md px-2 py-1" placeholder="Photo caption"></div>').join('')+'</div>'+
+   '<div class="grid grid-cols-2 sm:grid-cols-3 gap-2">'+it.photos.map((p,j)=>'<div class="relative"><div class="absolute top-1 left-1 z-10 px-1.5 py-0.5 rounded bg-slate-950/80 text-white text-[9px] font-bold">Photo '+(j+1)+'</div><img src="'+p.data+'" class="photo-thumb w-full rounded-lg border border-slate-200"><button onclick="removePhoto('+i+','+j+')" class="absolute -top-1 -right-1 w-5 h-5 bg-slate-900 text-white rounded-full text-[10px]">×</button><input value="'+escapeHtml(p.caption||'')+'" oninput="updatePhotoCaption('+i+','+j+',this.value)" class="w-full mt-1 text-[10px] border border-slate-200 rounded-md px-2 py-1" placeholder="Photo caption"></div>').join('')+'</div>'+
   '</article>'
  }).join('');
  lucide.createIcons();
@@ -760,7 +772,7 @@ async function addPhotos(i,files){
   }
   try{
    const compressed=await compressImage(file,1400,.78);
-   item.photos.push({data:compressed,name:file.name,caption:''});
+   item.photos.push({data:compressed,name:file.name,caption:'',addedAt:new Date().toISOString()});
   }catch(e){
    console.error('FieldInspect photo processing failed:',e);
    toast('Could not process '+file.name);
@@ -799,7 +811,8 @@ function renderReport(){
    '<div class="px-4 py-2 flex items-center gap-2 bg-slate-50 border-b border-slate-200"><span class="w-6 h-6 rounded-md text-white text-[10px] font-black flex items-center justify-center theme-bg">'+(i+1)+'</span><span class="font-extrabold text-[12px] flex-1">'+escapeHtml(it.title||'Observation finding')+'</span><span class="px-2 py-1 rounded-full text-[9px] font-extrabold '+sev[0]+' '+sev[1]+'">'+sev[2]+'</span></div>'+
    '<div class="p-4 grid grid-cols-[48mm_1fr] gap-4"><div>'+(photos||'<div class="w-[43mm] h-[43mm] rounded-lg border border-dashed border-slate-300 bg-slate-50 flex items-center justify-center text-[9px] text-slate-400 text-center">No photo<br>attached</div>')+'<div class="mt-2 text-[9px]"><span class="font-bold text-slate-400 uppercase">Area</span><div class="font-semibold mt-0.5">'+escapeHtml(it.location||'Site general')+'</div></div></div><div><div class="text-[9px] uppercase font-extrabold text-slate-400 mb-1.5">Field observation notes</div><div class="text-[10px] leading-relaxed text-slate-700">'+(notes||'<span class="italic text-slate-400">No notes documented.</span>')+'</div></div></div></div>'
  }).join('');
- document.getElementById('reportSheet').innerHTML='<div class="'+font+' min-h-[297mm]">'+
+ const attachmentHtml=(state.attachments||[]).length?'<div class="mt-5 border border-slate-200 rounded-xl p-3"><div class="text-[8px] uppercase font-extrabold text-slate-400 mb-2">Supporting documents</div>'+(state.attachments||[]).map(a=>'<div class="text-[9px] py-1">'+escapeHtml(a.name)+'</div>').join('')+'</div>':'';
+document.getElementById('reportSheet').innerHTML='<div class="'+font+' min-h-[297mm]">'+
  '<div class="px-[16mm] pt-[14mm] pb-5 text-white theme-bg"><div class="flex justify-between gap-5"><div><div class="text-[8px] uppercase tracking-[.22em] font-bold opacity-75">FieldInspect Pro</div><h1 class="text-[22px] font-black mt-2 leading-tight">'+escapeHtml(s.projectName||'Inspection Report')+'</h1><p class="text-[10px] opacity-80 mt-2">'+escapeHtml(s.siteLocation||'Site location not specified')+'</p></div><div class="text-right"><div class="text-[9px] opacity-70">REPORT ID</div><div class="font-mono font-bold text-[11px] mt-1">'+escapeHtml(s.reportId||'REP-PENDING')+'</div><div class="text-[9px] opacity-70 mt-3">DATE</div><div class="font-bold text-[10px] mt-1">'+escapeHtml(s.inspectionDate||'—')+'</div></div></div></div>'+
  '<div class="px-[16mm] py-5"><div class="grid grid-cols-4 border border-slate-200 rounded-xl overflow-hidden mb-5"><div class="p-3 bg-slate-50 border-r border-slate-200"><div class="text-[8px] uppercase font-bold text-slate-400">Inspector</div><div class="text-[10px] font-bold mt-1">'+escapeHtml(s.inspectorName||'—')+'</div></div><div class="p-3 bg-slate-50 border-r border-slate-200"><div class="text-[8px] uppercase font-bold text-slate-400">Client</div><div class="text-[10px] font-bold mt-1">'+escapeHtml(s.clientName||'—')+'</div></div><div class="p-3 bg-slate-50 border-r border-slate-200"><div class="text-[8px] uppercase font-bold text-slate-400">Conditions</div><div class="text-[10px] font-bold mt-1">'+escapeHtml(s.conditions||'Standard')+'</div></div><div class="p-3 bg-slate-50"><div class="text-[8px] uppercase font-bold text-slate-400">Status</div><div class="text-[10px] font-bold mt-1">'+escapeHtml(s.overallStatus||'Attention required')+'</div></div></div>'+
  '<div class="grid grid-cols-3 gap-3 mb-6"><div class="rounded-xl bg-rose-50 p-3 text-center"><div class="text-[18px] font-black text-rose-700">'+counts.high+'</div><div class="text-[8px] font-extrabold text-rose-600 uppercase">High / Critical</div></div><div class="rounded-xl bg-amber-50 p-3 text-center"><div class="text-[18px] font-black text-amber-700">'+counts.medium+'</div><div class="text-[8px] font-extrabold text-amber-600 uppercase">Medium / Monitor</div></div><div class="rounded-xl bg-blue-50 p-3 text-center"><div class="text-[18px] font-black text-blue-700">'+counts.low+'</div><div class="text-[8px] font-extrabold text-blue-600 uppercase">Low / Advisory</div></div></div>'+
@@ -824,6 +837,34 @@ function fitPreview(){
  // entire report remains scrollable even when it grows beyond one A4 page.
  const renderedHeight=Math.max(1123,sheet.scrollHeight||sheet.offsetHeight||1123);
  scaleWrap.style.height=Math.ceil(renderedHeight*scale+40)+'px';
+}
+function addAttachments(files){
+ const selected=[...files];
+ if(!Array.isArray(state.attachments))state.attachments=[];
+ const remaining=Math.max(0,3-state.attachments.length);
+ if(!remaining){toast('Maximum of 3 supporting documents reached.');return}
+ for(const file of selected.slice(0,remaining)){
+  if(file.size>3*1024*1024){toast(file.name+' is too large. Maximum is 3 MB.');continue}
+  const reader=new FileReader();
+  reader.onload=()=>{
+   state.attachments.push({id:makeId()+'-DOC',name:file.name,type:file.type||'application/octet-stream',size:file.size,data:reader.result,addedAt:new Date().toISOString()});
+   renderAttachments();persist();renderReport();
+  };
+  reader.onerror=()=>toast('Could not read '+file.name);
+  reader.readAsDataURL(file);
+ }
+ if(selected.length>remaining)toast('Only '+remaining+' more supporting document'+(remaining===1?' is':'s are')+' allowed.');
+}
+function removeAttachment(id){
+ const idx=(state.attachments||[]).findIndex(x=>x.id===id);if(idx<0)return;
+ if(!confirm('Remove this supporting document?'))return;
+ state.attachments.splice(idx,1);renderAttachments();persist();renderReport();
+}
+function renderAttachments(){
+ const el=document.getElementById('attachmentsList');if(!el)return;
+ const list=Array.isArray(state.attachments)?state.attachments:[];
+ el.innerHTML=list.length?list.map((a,i)=>'<div class="flex items-center gap-3 rounded-xl border border-slate-200 p-2.5"><div class="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center"><i data-lucide="file-text" class="w-4 h-4 text-slate-500"></i></div><div class="flex-1 min-w-0"><div class="text-xs font-bold truncate">'+escapeHtml(a.name)+'</div><div class="text-[9px] text-slate-400">'+Math.max(1,Math.round((a.size||0)/1024))+' KB · added '+escapeHtml(a.addedAt?new Date(a.addedAt).toLocaleString():'')+'</div></div><a href="'+a.data+'" download="'+escapeHtml(a.name)+'" class="text-[10px] font-bold text-indigo-600">Open</a><button onclick="removeAttachment(\''+a.id+'\')" class="text-rose-600 text-xs">Remove</button></div>').join(''):'<div class="text-[10px] text-slate-400 border border-dashed border-slate-200 rounded-xl p-4 text-center">No supporting documents attached.</div>';
+ if(window.lucide?.createIcons)lucide.createIcons();
 }
 function setupSignatures(){
  setupSig('inspectorSig','inspector');setupSig('clientSig','client');
@@ -955,8 +996,8 @@ window.addEventListener('DOMContentLoaded',init);
   else el.innerHTML=rows.map(r=>{const sc=r.status==='completed'?'bg-emerald-50 text-emerald-700 border-emerald-200':r.status==='in-progress'?'bg-indigo-50 text-indigo-700 border-indigo-200':r.status==='archived'?'bg-slate-100 text-slate-600 border-slate-200':'bg-amber-50 text-amber-700 border-amber-200';const d=r.inspectionDate?new Date(r.inspectionDate+'T00:00:00').toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'}):'No date';return '<div class="rounded-2xl border border-slate-200 p-4 hover:border-indigo-200 hover:shadow-sm transition"><div class="flex flex-col xl:flex-row xl:items-center gap-4"><div class="flex-1 min-w-0"><div class="flex flex-wrap items-center gap-2"><span class="font-mono text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md">'+escapeHtml(r.reportId)+'</span><span class="text-[10px] font-bold border rounded-full px-2 py-1 '+sc+'">'+escapeHtml(r.status||'draft')+'</span><span class="text-[10px] text-slate-400">'+escapeHtml(d)+'</span></div><h3 class="font-extrabold text-sm mt-2 truncate">'+escapeHtml(r.projectName)+'</h3><div class="grid sm:grid-cols-3 gap-x-4 gap-y-1 mt-2 text-[11px] text-slate-500"><span><b class="text-slate-700">Client:</b> '+escapeHtml(r.clientName||'—')+'</span><span><b class="text-slate-700">Inspector:</b> '+escapeHtml(r.inspectorName||'—')+'</span><span><b class="text-slate-700">Location:</b> '+escapeHtml(r.siteLocation||'—')+'</span></div></div><div class="flex flex-wrap gap-2"><button onclick="openHistoryRecord(\''+r.id+'\')" class="px-3 py-2 rounded-lg bg-slate-900 text-white text-xs font-bold">Open & edit</button><button onclick="duplicateHistoryRecord(\''+r.id+'\')" class="px-3 py-2 rounded-lg border border-indigo-200 text-indigo-700 text-xs font-bold">Duplicate</button><button onclick="archiveHistoryRecord(\''+r.id+'\')" class="w-9 h-9 rounded-lg border border-slate-200 text-slate-600 flex items-center justify-center" title="Archive / restore"><i data-lucide="'+(r.status==='archived'?'archive-restore':'archive')+'" class="w-4 h-4"></i></button><button onclick="deleteHistoryRecord(\''+r.id+'\')" class="w-9 h-9 rounded-lg border border-rose-200 text-rose-600 flex items-center justify-center" title="Move to recently deleted"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div></div></div>'}).join('');
   if(window.lucide?.createIcons)lucide.createIcons();
  };
- window.openHistoryRecord=function(id){const r=readHistory().find(x=>x.id===id);if(!r)return;state=structuredClone(r.state);state.meta.workflowStatus=r.status||'draft';persistNow();bindFields();renderDefects();if(typeof applyTheme==='function')applyTheme();renderReport();if(typeof setupSignatures==='function')setTimeout(setupSignatures,0);closeHistory();toast('Loaded '+state.meta.reportId+' for editing.')};
- window.duplicateHistoryRecord=function(id){const r=readHistory().find(x=>x.id===id);if(!r)return;state=structuredClone(r.state);state.meta.reportId=makeId();state.meta.projectName=(state.meta.projectName||'Inspection')+' — Copy';state.meta.workflowStatus='draft';persistNow();bindFields();renderDefects();renderReport();closeHistory();toast('Inspection duplicated as a new draft.')};
+ window.openHistoryRecord=function(id){const r=readHistory().find(x=>x.id===id);if(!r)return;state=structuredClone(r.state);state.meta.workflowStatus=r.status||'draft';persistNow();bindFields();renderDefects();renderAttachments();if(typeof applyTheme==='function')applyTheme();renderReport();if(typeof setupSignatures==='function')setTimeout(setupSignatures,0);closeHistory();toast('Loaded '+state.meta.reportId+' for editing.')};
+ window.duplicateHistoryRecord=function(id){const r=readHistory().find(x=>x.id===id);if(!r)return;state=structuredClone(r.state);state.meta.reportId=makeId();state.meta.projectName=(state.meta.projectName||'Inspection')+' — Copy';state.meta.workflowStatus='draft';persistNow();bindFields();renderDefects();renderAttachments();renderReport();closeHistory();toast('Inspection duplicated as a new draft.')};
  window.archiveHistoryRecord=function(id){const list=readHistory(),i=list.findIndex(x=>x.id===id);if(i<0)return;list[i].status=list[i].status==='archived'?'draft':'archived';list[i].state.meta.workflowStatus=list[i].status;list[i].updatedAt=new Date().toISOString();if(writeHistory(list)){renderHistory();toast(list[i].status==='archived'?'Inspection archived.':'Inspection restored.')}};
  window.deleteHistoryRecord=function(id){const list=readHistory(),i=list.findIndex(x=>x.id===id);if(i<0||!confirm('Move this inspection to Recently Deleted?'))return;const r=list[i],next=list.filter(x=>x.id!==id);if(!writeHistory(next))return;r.deletedAt=new Date().toISOString();const trash=readTrash();trash.unshift(r);if(!writeTrash(trash))return;renderHistory();toast('Inspection moved to Recently Deleted.')};
  window.openTrash=function(){document.getElementById('trashModal').classList.remove('hidden');document.body.classList.add('overflow-hidden');renderTrash()};
