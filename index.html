@@ -465,6 +465,17 @@ function updateSubscriptionUI(){
   else status.textContent='This subscription has expired. Choose a plan to reactivate it.';
  }
 }
+function resetTrialForTesting(){
+ const isLocal=location.hostname==='localhost'||location.hostname==='127.0.0.1';
+ if(!isLocal){toast('Developer trial reset is available only on localhost.');return false}
+ subscription={...defaultSubscription()};
+ saveSubscription();
+ updatePlanUI();
+ toast('Developer test allowance reset: 10 inspections and 2 PDF exports.');
+ return true;
+}
+window.resetTrialForTesting=resetTrialForTesting;
+
 function recordInspectionUsage(){
  if(!canCreateInspection()){openPaywall('plans');toast('Your inspection allowance has been reached. Choose a plan to continue.');return false}
  subscription.inspectionUsed++;
