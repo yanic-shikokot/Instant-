@@ -1259,9 +1259,13 @@ window.duplicateHistoryRecord=async function(id){
  const trash=readTrash(),i=trash.findIndex(x=>x.id===id);if(i<0)return;
  if(!confirm('Permanently delete this inspection? This cannot be undone.'))return;
  const r=trash[i];
- if(window.FIELDINSPECT_AUTH_USER&&window.FIELDINSPECT_STORAGE?.deleteInspectionEvidence&&r?.state?.meta?.storageId){
-  try{await window.FIELDINSPECT_STORAGE.deleteInspectionEvidence(r.state.meta.storageId)}
-  catch(e){console.error('FieldInspect permanent cloud evidence delete failed:',e);toast('Could not remove this inspection from cloud evidence. Nothing was permanently deleted.');return}
+ try{
+  if(window.FIELDINSPECT_AUTH_USER&&window.FIELDINSPECT_DELETE_CLOUD_INSPECTION)await window.FIELDINSPECT_DELETE_CLOUD_INSPECTION(r.id);
+  if(window.FIELDINSPECT_AUTH_USER&&window.FIELDINSPECT_STORAGE?.deleteInspectionEvidence&&r?.state?.meta?.storageId)await window.FIELDINSPECT_STORAGE.deleteInspectionEvidence(r.state.meta.storageId);
+ }catch(e){
+  console.error('FieldInspect permanent cloud deletion failed:',e);
+  toast('Cloud cleanup failed. The inspection remains in Recently Deleted so nothing is lost.');
+  return;
  }
  trash.splice(i,1);
  if(writeTrash(trash)){renderTrash();toast('Inspection permanently deleted.')}
@@ -1272,27 +1276,23 @@ window.purgeAllDeleted=async function(){
  if(!confirm('Permanently delete all recently deleted inspections? This cannot be undone.'))return;
  const remaining=[];
  let failed=0;
- if(window.FIELDINSPECT_AUTH_USER&&window.FIELDINSPECT_STORAGE?.deleteInspectionEvidence){
-  for(const r of trash){
-   if(!r?.state?.meta?.storageId)continue;
-   try{await window.FIELDINSPECT_STORAGE.deleteInspectionEvidence(r.state.meta.storageId)}
-   catch(e){failed++;remaining.push(r);console.error('FieldInspect bulk cloud evidence delete failed:',e)}
+ for(const r of trash){
+  try{
+   if(window.FIELDINSPECT_AUTH_USER&&window.FIELDINSPECT_DELETE_CLOUD_INSPECTION)await window.FIELDINSPECT_DELETE_CLOUD_INSPECTION(r.id);
+   if(window.FIELDINSPECT_AUTH_USER&&window.FIELDINSPECT_STORAGE?.deleteInspectionEvidence&&r?.state?.meta?.storageId)await window.FIELDINSPECT_STORAGE.deleteInspectionEvidence(r.state.meta.storageId);
+  }catch(e){
+   failed++;
+   remaining.push(r);
+   console.error('FieldInspect bulk permanent cloud deletion failed:',e);
   }
- }else{
-  remaining.push(...trash);
- }
- const localOnly=remaining.length;
- const deletedCount=trash.length-localOnly;
- if(!window.FIELDINSPECT_AUTH_USER){
-  remaining.length=0;
  }
  if(writeTrash(remaining)){
   renderTrash();
-  if(failed)toast(deletedCount+' deleted. '+failed+' cloud evidence record(s) could not be removed and were kept in Recently Deleted.');
+  const deleted=trash.length-remaining.length;
+  if(failed)toast(deleted+' deleted permanently. '+failed+' kept in Recently Deleted because cloud cleanup failed.');
   else toast(trash.length+' recently deleted inspection(s) permanently removed.');
  }
 };
-
  window.addEventListener('DOMContentLoaded',()=>{if(window.lucide?.createIcons)lucide.createIcons()});
 })();
 </script>
