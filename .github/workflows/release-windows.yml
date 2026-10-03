@@ -2,14 +2,9 @@ name: Release Windows Installer
 
 on:
   push:
-    tags:
-      - 'v*.*.*'
+    branches:
+      - main
   workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version to release (must match package.json, e.g. 1.6.3)'
-        required: true
-        type: string
 
 permissions:
   contents: write
@@ -29,34 +24,29 @@ jobs:
         with:
           node-version: 22
 
-      - name: Validate version and tag
+      - name: Prepare release tag
         shell: pwsh
+        env:
+          GH_TOKEN: ${ secrets.GITHUB_TOKEN }
         run: |
           $packageVersion = node -p "require('./package.json').version"
-          $expectedTag = "v$packageVersion"
-          if ("${ github.event_name }}" -eq "workflow_dispatch") {
-            $requestedVersion = "${ inputs.version }"
-            if ($requestedVersion -ne $packageVersion) {
-              throw "workflow_dispatch version $requestedVersion does not match package.json version $packageVersion."
-            }
-            $tagExists = git tag --list $expectedTag
-            if (-not $tagExists) {
-              git config user.name "github-actions[bot]"
-              git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-              git tag -a $expectedTag -m "FieldInspect Pro $packageVersion"
-              git push origin $expectedTag
-            }
-          } else {
-            if ("${ github.ref_name }}" -ne $expectedTag) {
-              throw "Git tag ${ github.ref_name } does not match package version $packageVersion."
-            }
+          $tag = "v$packageVersion"
+
+          git fetch --tags --force
+          $existing = git tag --list $tag
+          if (-not $existing) {
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a $tag -m "FieldInspect Pro $packageVersion"
+            git push origin $tag
           }
-          Write-Host "Release version: $packageVersion"
+
+          Write-Host "Release tag: $tag"
 
       - name: Install dependencies
         run: npm install
 
-      - name: Build Windows installer
+      - name: Build and publish Windows release
         run: npx electron-builder --win nsis --publish always
         env:
           GH_TOKEN: ${ secrets.GITHUB_TOKEN }
