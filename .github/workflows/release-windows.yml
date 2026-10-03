@@ -28,10 +28,12 @@ jobs:
       - name: Validate package version
         shell: pwsh
         run: |
-          $tagVersion = "${{ github.ref_name }}".TrimStart("v")
           $packageVersion = node -p "require('./package.json').version"
-          if ($tagVersion -and $tagVersion -ne $packageVersion) {
-            throw "Git tag v$packageVersion is required, but received ${{ github.ref_name }}"
+          if ("${{ github.ref_type }}" -eq "tag") {
+            $tagVersion = "${{ github.ref_name }}".TrimStart("v")
+            if ($tagVersion -ne $packageVersion) {
+              throw "Git tag v$packageVersion is required, but received ${{ github.ref_name }}"
+            }
           }
 
       - name: Build and publish Windows release
