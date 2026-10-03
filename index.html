@@ -805,11 +805,16 @@ function activateCode(){
 }
 async function handlePdf(){
  if(!canExportPdf()){openPaywall();toast('Your PDF export allowance has been reached. Choose a plan to continue.');return}
- const modal=document.getElementById('pdfModal');modal.classList.remove('hidden');modal.classList.add('flex');
+ const modal=document.getElementById('pdfModal');
  const status=document.getElementById('pdfStatus'),progress=document.getElementById('pdfProgress');
+ if(!modal||!status||!progress){toast('PDF interface is not available. Refresh the page and try again.');return}
+ modal.classList.remove('hidden');modal.classList.add('flex');
  try{
+  status.textContent='Checking PDF engine…';progress.style.width='10%';
+  if(!window.jspdf?.jsPDF)throw new Error('PDF engine failed to load. Check your internet connection, then refresh the page.');
+  const {jsPDF}=window.jspdf;
   status.textContent='Building report pages…';progress.style.width='25%';await new Promise(r=>setTimeout(r,50));
-  const {jsPDF}=window.jspdf;const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4',compress:true});
+  const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4',compress:true});
   const pageW=210,pageH=297,margin=14,contentW=pageW-margin*2;
   const t=THEMES[state.theme];
   let y=margin;
@@ -843,7 +848,10 @@ async function handlePdf(){
   subscription.pdfUsed++;saveSubscription();updatePlanUI();
   progress.style.width='100%';status.textContent='PDF downloaded successfully.';toast(subscription.plan==='trial'?'PDF exported. '+Math.max(0,getPlan().pdfLimit-subscription.pdfUsed)+' free export'+(Math.max(0,getPlan().pdfLimit-subscription.pdfUsed)===1?'':'s')+' remaining.':'PDF exported.');
  }catch(e){console.error(e);status.textContent='PDF generation failed: '+e.message;toast('PDF generation failed. Check the browser console for details.')}
- finally{setTimeout(()=>{document.getElementById('pdfModal').classList.add('hidden');document.getElementById('pdfModal').classList.remove('flex')},700)}
+ finally{
+  progress.style.width='100%';
+  setTimeout(()=>{modal.classList.add('hidden');modal.classList.remove('flex')},700)
+ }
 }
 function hexRgb(hex){const n=parseInt(hex.slice(1),16);return[(n>>16)&255,(n>>8)&255,n&255]}
 function mobileTab(tab){
