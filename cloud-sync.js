@@ -115,6 +115,11 @@ async function deleteCloudRecord(localId){
   if(error) throw error;
 }
 
+window.FIELDINSPECT_DELETE_CLOUD_INSPECTION=async function(localId){
+  if(!user()) return;
+  await deleteCloudRecord(localId);
+};
+
 let syncPromise=null;
 async function sync(options={}){
   if(!supabase||!user()) return {ok:false,reason:'not-authenticated'};
