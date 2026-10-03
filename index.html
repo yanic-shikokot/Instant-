@@ -652,7 +652,10 @@ function hasInspectionContent(){
 function autoSaveDraftToHistory(reason='autosave'){
  try{
   if(!hasInspectionContent())return false;
-  const copy=snapshotState(),now=new Date().toISOString(),id=copy.meta.reportId||makeId();
+  // This function lives in the main application scope. Do not call the
+  // history IIFE's private snapshotState(), because that function is not
+  // visible here and would make New inspection fail before History is written.
+  const copy=JSON.parse(JSON.stringify(state)),now=new Date().toISOString(),id=copy.meta.reportId||makeId();
   copy.meta.reportId=id;state.meta.reportId=id;
   const list=readHistory(),existingIndex=list.findIndex(x=>x.reportId===id),previous=existingIndex>=0?list[existingIndex]:null;
   const record={
