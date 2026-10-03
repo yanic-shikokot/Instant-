@@ -148,6 +148,23 @@ async function pull(){
   setCloudStatus('merged','Remote history merged.',merged.length);
   return {count:merged.length};
 }
+async function ensureCloudSubscription(){
+  const supabase=getSupabase(),u=user();
+  if(!supabase||!u)return null;
+  if(!supabase.rpc)throw new Error('Supabase subscription service is unavailable.');
+  const {data,error}=await supabase.rpc('ensure_trial_subscription');
+  if(error)throw error;
+  if(!data?.user_id || data.user_id!==u.id){
+    throw new Error('Cloud subscription could not be verified for the signed-in user.');
+  }
+  if(!['TRIAL','ACTIVE'].includes(String(data.status||'').toUpperCase())){
+    throw new Error('Cloud subscription is inactive.');
+  }
+  if(data.inspection_limit!=null && Number(data.inspections_used||0)>=Number(data.inspection_limit)){
+    throw new Error('Cloud inspection limit reached.');
+  }
+  return data;
+}
 async function push(){
   const supabase=getSupabase(),u=user();
   if(!supabase||!u)return {count:0,failed:[]};
@@ -242,6 +259,7 @@ async function sync(options={}){
     setCloudStatus('syncing','Synchronizing inspections…');
     try{
       const pulled=await pull();
+      await ensureCloudSubscription();
       const deleted=await deleteCloudRecords(readTrash());
       const pushed=await push();
       const finalPull=await pull();
