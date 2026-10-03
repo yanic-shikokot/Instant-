@@ -374,7 +374,20 @@ let saveTimer=null;
 let sigDrawing={inspectorSig:false,clientSig:false};
 
 function loadState(){
- try{return Object.assign(structuredClone(DEFAULT_STATE),JSON.parse(localStorage.getItem(STORAGE+':draft'))||{});}catch(e){return structuredClone(DEFAULT_STATE)}
+ try{
+  const saved=JSON.parse(localStorage.getItem(STORAGE+':draft')||'null');
+  if(!saved)return structuredClone(DEFAULT_STATE);
+  return {
+   ...structuredClone(DEFAULT_STATE),
+   ...saved,
+   meta:{...structuredClone(DEFAULT_STATE.meta),...(saved.meta||{})},
+   signatures:{...structuredClone(DEFAULT_STATE.signatures),...(saved.signatures||{})},
+   items:Array.isArray(saved.items)?saved.items:[]
+  };
+ }catch(e){
+  console.error('FieldInspect draft load failed:',e);
+  return structuredClone(DEFAULT_STATE);
+ }
 }
 const PLAN_DEFS={
  trial:{name:'Free Trial',price:0,inspectionLimit:10,pdfLimit:2,seats:1,periodDays:null},
@@ -703,12 +716,20 @@ function renderReport(){
  fitPreview();
 }
 function fitPreview(){
- const viewport=document.querySelector('.report-viewport'),scaleWrap=document.getElementById('reportScale');if(!viewport||!scaleWrap)return;
- const available=Math.max(280,viewport.clientWidth-28),sheetWidth=794; // 210mm at 96dpi ≈ 794px
+ const viewport=document.querySelector('.report-viewport');
+ const scaleWrap=document.getElementById('reportScale');
+ const sheet=document.getElementById('reportSheet');
+ if(!viewport||!scaleWrap||!sheet)return;
+ const available=Math.max(280,viewport.clientWidth-28);
+ const sheetWidth=794;
  const scale=Math.min(1,available/sheetWidth);
+ scaleWrap.style.width=sheetWidth+'px';
  scaleWrap.style.transform='scale('+scale+')';
  scaleWrap.style.transformOrigin='top center';
- scaleWrap.style.height=(1123*scale+40)+'px';
+ // Transforms do not affect layout. Reserve the real rendered height so the
+ // entire report remains scrollable even when it grows beyond one A4 page.
+ const renderedHeight=Math.max(1123,sheet.scrollHeight||sheet.offsetHeight||1123);
+ scaleWrap.style.height=Math.ceil(renderedHeight*scale+40)+'px';
 }
 function setupSignatures(){
  setupSig('inspectorSig','inspector');setupSig('clientSig','client');
@@ -803,11 +824,15 @@ window.addEventListener('DOMContentLoaded',init);
 /* FieldInspect Pro — local inspection history */
 (function(){
  'use strict';
- const HISTORY_KEY='fieldinspect-pro-v2:history';
+ function historyKey(){
+  const user=window.FIELDINSPECT_AUTH_USER||null;
+  const key=user?.id||user?.email||'anonymous';
+  return 'fieldinspect-pro-v2:history:'+key;
+ }
 
  function readHistory(){
   try{
-   const value=JSON.parse(localStorage.getItem(HISTORY_KEY)||'[]');
+   const value=JSON.parse(localStorage.getItem(historyKey())||'[]');
    return Array.isArray(value)?value:[];
   }catch(e){
    console.error('FieldInspect history read failed:',e);
@@ -816,7 +841,7 @@ window.addEventListener('DOMContentLoaded',init);
  }
  function writeHistory(list){
   try{
-   localStorage.setItem(HISTORY_KEY,JSON.stringify(list.slice(0,100)));
+   localStorage.setItem(historyKey(),JSON.stringify(list.slice(0,100)));
    return true;
   }catch(e){
    console.error('FieldInspect history write failed:',e);
