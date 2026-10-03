@@ -38,3 +38,13 @@ jobs:
         run: npm run release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify installer and update metadata
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem "release" -Filter "FieldInspect-Pro-Setup-*.exe" | Select-Object -First 1
+          $metadata = Get-ChildItem "release" -Filter "latest.yml" | Select-Object -First 1
+          if (-not $installer) { throw "Windows installer was not produced." }
+          if (-not $metadata) { throw "latest.yml was not produced; automatic updates cannot work." }
+          Write-Host "Installer: $($installer.FullName)"
+          Write-Host "Update metadata: $($metadata.FullName)"
