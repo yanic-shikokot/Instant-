@@ -157,11 +157,12 @@ async function push(){
   let pushed=0;
   for(const record of local){
     try{
-      const {error}=await supabase.from('inspections').upsert(
+      const {data,error}=await supabase.from('inspections').upsert(
         cloudRow(record),
         {onConflict:'user_id,local_id'}
-      );
+      ).select('id').single();
       if(error)throw error;
+      if(!data?.id)throw new Error('Cloud inspection write was not acknowledged by Supabase.');
       pushed++;
     }catch(error){
       failed.push({id:record.id,message:error?.message||'Cloud upload failed',code:error?.code||''});
@@ -173,18 +174,29 @@ async function push(){
 async function deleteCloudRecord(localId){
   const supabase=getSupabase(),u=user();
   if(!supabase||!u||!localId)return;
-  const {error}=await supabase.from('inspections')
+  const {data:existing,error:lookupError}=await supabase.from('inspections')
+    .select('id')
+    .eq('user_id',u.id)
+    .eq('local_id',localId)
+    .maybeSingle();
+  if(lookupError)throw lookupError;
+  if(!existing?.id)return false;
+
+  const {data,error}=await supabase.from('inspections')
     .delete()
     .eq('user_id',u.id)
-    .eq('local_id',localId);
+    .eq('local_id',localId)
+    .select('id');
   if(error)throw error;
+  if(!data?.length)throw new Error('Cloud inspection deletion was not acknowledged by Supabase.');
+  return true;
 }
 async function deleteCloudRecords(records){
-  const list=Array.isArray(records)?records:[];
+  const list=Array.isArray(records)?records.filter(r=>r?.id):[];
   const failed=[];
   for(const record of list){
     try{
-      await deleteCloudRecord(record?.id);
+      await deleteCloudRecord(record.id);
       if(window.FIELDINSPECT_STORAGE?.deleteInspectionEvidence&&record?.state?.meta?.storageId){
         await window.FIELDINSPECT_STORAGE.deleteInspectionEvidence(record.state.meta.storageId);
       }
