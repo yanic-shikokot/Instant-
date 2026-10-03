@@ -683,10 +683,19 @@ function syncCurrentHistoryStatus(){
  try{const id=state.meta?.reportId;if(!id||typeof readHistory!=='function'||typeof writeHistory!=='function')return;const list=readHistory(),idx=list.findIndex(r=>r.reportId===id);if(idx<0)return;list[idx].status=state.meta.workflowStatus||'draft';list[idx].state=snapshotState();list[idx].updatedAt=new Date().toISOString();writeHistory(list)}catch(e){console.error('History status sync failed:',e)}
 }
 function newInspection(){
- if(!confirm('Start a new inspection? Your current work will be automatically saved to History first.'))return;
  const saved=autoSaveDraftToHistory('new-inspection');
  if(hasInspectionContent()&&!saved){toast('Current inspection could not be saved. New inspection was not started.');return}
- state=structuredClone(DEFAULT_STATE);state.meta.reportId=makeId();state.meta.inspectionDate=today();state.meta.workflowStatus='draft';persistNow();bindFields();renderDefects();renderAttachments();renderReport();setupSignatures();toast(saved?'Current work saved. New inspection started.':'New inspection started.');
+ state=structuredClone(DEFAULT_STATE);
+ state.meta.reportId=makeId();
+ state.meta.inspectionDate=today();
+ state.meta.workflowStatus='draft';
+ persistNow();
+ bindFields();
+ renderDefects();
+ renderAttachments();
+ renderReport();
+ setupSignatures();
+ toast(saved?'Current work saved. New inspection started.':'New inspection started.');
 }
 function loadSample(){
  state.meta={reportId:makeId(),inspectionDate:today(),projectName:'Electrical Installation & Safety Inspection',inspectorName:'Alex Morgan',clientName:'Apex Facilities Ltd',siteLocation:'Nairobi Industrial Area',conditions:'Dry · equipment operational',overallStatus:'Attention required'};
