@@ -79,11 +79,16 @@ function configureAutoUpdates() {
     console.error('[FieldInspect] Auto-update error:', error);
   });
 
-  setTimeout(() => {
+  const check = () => {
     autoUpdater.checkForUpdates().catch(error => {
       console.error('[FieldInspect] Update check failed:', error);
     });
-  }, 8000);
+  };
+
+  // First check after startup, then periodically so long-running sessions
+  // also receive releases without requiring a manual installer download.
+  setTimeout(check, 8000);
+  setInterval(check, 6 * 60 * 60 * 1000);
 }
 
 app.whenReady().then(() => {
