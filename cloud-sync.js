@@ -224,9 +224,6 @@ async function sync(options={}){
     setCloudStatus('signedout','Sign in to synchronize inspections.');
     return {ok:false,reason:'not-authenticated'};
   }
-    setCloudStatus('offline','No internet connection. Local inspections are safe and will sync when online.');
-    return {ok:false,reason:'offline'};
-  }
   if(syncPromise)return syncPromise;
 
   syncPromise=(async()=>{
