@@ -148,30 +148,50 @@ async function pull(){
   setCloudStatus('merged','Remote history merged.',merged.length);
   return {count:merged.length};
 }
+function normalizeSubscriptionRow(data){
+  return Array.isArray(data)?(data[0]||null):(data||null);
+}
+function isInspectionLimitError(error){
+  const text=[error?.message,error?.details,error?.hint,error?.code].filter(Boolean).join(' ').toUpperCase();
+  return text.includes('INSPECTION_LIMIT_REACHED')||text.includes('INSPECTION LIMIT')||text.includes('LIMIT_REACHED');
+}
+function isSubscriptionInactiveError(error){
+  const text=[error?.message,error?.details,error?.hint,error?.code].filter(Boolean).join(' ').toUpperCase();
+  return text.includes('SUBSCRIPTION_INACTIVE')||text.includes('SUBSCRIPTION INACTIVE');
+}
+function subscriptionMessage(row){
+  if(!row)return 'Cloud subscription could not be verified.';
+  const status=String(row.status||'').toUpperCase();
+  const used=Number(row.inspections_used||0);
+  const limit=row.inspection_limit==null?null:Number(row.inspection_limit);
+  if(status!=='TRIAL'&&status!=='ACTIVE')return 'Your subscription is inactive.';
+  if(limit!=null&&used>=limit)return 'Your inspection limit has been reached. New inspections remain saved locally until your plan is upgraded or renewed.';
+  return '';
+}
 async function ensureCloudSubscription(){
   const supabase=getSupabase(),u=user();
   if(!supabase||!u)return null;
   if(!supabase.rpc)throw new Error('Supabase subscription service is unavailable.');
   const {data,error}=await supabase.rpc('ensure_trial_subscription');
   if(error)throw error;
-  if(!data?.user_id || data.user_id!==u.id){
+  const row=normalizeSubscriptionRow(data);
+  if(!row?.user_id || row.user_id!==u.id){
     throw new Error('Cloud subscription could not be verified for the signed-in user.');
   }
-  if(!['TRIAL','ACTIVE'].includes(String(data.status||'').toUpperCase())){
-    throw new Error('Cloud subscription is inactive.');
-  }
-  // Do not block synchronization when the usage limit is reached.
-  // Syncing existing records/merging history is not the same as creating a
-  // new inspection. The database trigger enforces the limit on new inserts.
-  return data;
+  return row;
 }
-async function push(){
+async function push(subscription=null){
   const supabase=getSupabase(),u=user();
-  if(!supabase||!u)return {count:0,failed:[]};
+  if(!supabase||!u)return {count:0,failed:[],limitReached:false};
   const trashed=new Set(readTrash().map(x=>x?.id).filter(Boolean));
   const local=readHistory().filter(x=>x?.id&&!trashed.has(x.id));
   const failed=[];
   let pushed=0;
+  let limitReached=false;
+  let inactive=false;
+  const limit=subscription?.inspection_limit==null?null:Number(subscription.inspection_limit);
+  const used=Number(subscription?.inspections_used||0);
+
   for(const record of local){
     try{
       const {data,error}=await supabase.from('inspections').upsert(
@@ -182,11 +202,28 @@ async function push(){
       if(!data?.id)throw new Error('Cloud inspection write was not acknowledged by Supabase.');
       pushed++;
     }catch(error){
-      failed.push({id:record.id,message:error?.message||'Cloud upload failed',code:error?.code||''});
+      const message=error?.message||'Cloud upload failed';
+      const limited=isInspectionLimitError(error);
+      const subInactive=isSubscriptionInactiveError(error);
+      limitReached=limitReached||limited;
+      inactive=inactive||subInactive;
+      failed.push({
+        id:record.id,
+        message:limited
+          ? 'New inspection blocked by the subscription inspection limit.'
+          : subInactive
+            ? 'New inspection blocked because the subscription is inactive.'
+            : message,
+        code:error?.code||'',
+        reason:limited?'inspection-limit':subInactive?'subscription-inactive':'upload-failed'
+      });
       console.error('FieldInspect cloud record push failed:',record.id,error);
     }
   }
-  return {count:pushed,failed};
+  if(!limitReached&&limit!=null&&used>=limit&&failed.length){
+    limitReached=true;
+  }
+  return {count:pushed,failed,limitReached,inactive};
 }
 async function deleteCloudRecord(localId){
   const supabase=getSupabase(),u=user();
@@ -259,17 +296,56 @@ async function sync(options={}){
     setCloudStatus('syncing','Synchronizing inspections…');
     try{
       const pulled=await pull();
-      await ensureCloudSubscription();
+
+      let subscription=null;
+      let subscriptionError=null;
+      try{
+        subscription=await ensureCloudSubscription();
+      }catch(error){
+        subscriptionError=error;
+        console.error('FieldInspect subscription check failed:',error);
+      }
+
+      // Always process permanent deletions before uploads. A record in the
+      // local trash must never be recreated in the cloud.
       const deleted=await deleteCloudRecords(readTrash());
-      const pushed=await push();
+      const pushed=await push(subscription);
       const finalPull=await pull();
+
       const totalFailures=deleted.failed.length+pushed.failed.length;
-      const ok=totalFailures===0;
-      const detail=ok
-        ? 'Local and cloud inspection history are synchronized.'
-        : totalFailures+' cloud operation(s) still need retry.';
-      setCloudStatus(ok?'synced':'partial',detail,finalPull.count);
-      return {ok,reason:ok?'synced':'partial',pulled,deleted,pushed,finalPull};
+      const limitReached=Boolean(pushed.limitReached);
+      const inactive=Boolean(pushed.inactive);
+      const hasSubscriptionError=Boolean(subscriptionError);
+
+      let state='synced';
+      let detail='Local and cloud inspection history are synchronized.';
+
+      if(limitReached){
+        state='partial';
+        detail='Cloud sync completed for existing inspections, but one or more new inspections are waiting for available plan capacity.';
+      }else if(inactive){
+        state='partial';
+        detail='Cloud sync completed for existing inspections, but new inspections are waiting for an active subscription.';
+      }else if(hasSubscriptionError){
+        state='partial';
+        detail='Cloud data was merged, but subscription status could not be verified.';
+      }else if(totalFailures){
+        state='partial';
+        detail=totalFailures+' cloud operation(s) still need retry.';
+      }
+
+      const ok=state==='synced'&&totalFailures===0&&!hasSubscriptionError;
+      setCloudStatus(state,detail,finalPull.count);
+      return {
+        ok,
+        reason:ok?'synced':'partial',
+        pulled,
+        subscription,
+        subscriptionError,
+        deleted,
+        pushed,
+        finalPull
+      };
     }catch(error){
       console.error('FieldInspect cloud sync failed:',error);
       setCloudStatus('error',error?.message||'Cloud synchronization failed.');
@@ -289,6 +365,9 @@ window.FIELDINSPECT_SYNC_NOW=async function(){
   if(result.ok)toast('Cloud sync completed.');
   else if(result.reason==='offline')toast('You are offline. Local inspections are safe and will sync automatically when you reconnect.');
   else if(result.reason==='not-authenticated')toast('Sign in to synchronize your inspections.');
+  else if(result.pushed?.limitReached)toast('Cloud sync completed for existing inspections. Your new inspection is saved locally because your inspection limit has been reached.');
+  else if(result.pushed?.inactive)toast('Cloud sync completed for existing inspections. Your new inspection is saved locally because your subscription is inactive.');
+  else if(result.subscriptionError)toast('Cloud data was merged, but subscription status could not be verified. Your local inspections are preserved.');
   else toast('Cloud sync needs attention. Your local inspections are preserved.');
   return result;
 };
