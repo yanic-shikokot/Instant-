@@ -196,12 +196,34 @@ async function deleteCloudRecords(records){
   return {ok:failed.length===0,failed};
 }
 async function sync(options={}){
-  const supabase=getSupabase(),u=user();
-  if(!supabase||!u){
-    setCloudStatus(navigator.onLine?'signedout':'offline','Sign in to synchronize inspections.');
-    return {ok:false,reason:'not-authenticated'};
+  const supabase=getSupabase();
+  if(!supabase){
+    setCloudStatus('error','Supabase client is not configured.');
+    return {ok:false,reason:'not-configured'};
   }
   if(!navigator.onLine){
+    setCloudStatus('offline','No internet connection. Local inspections are safe and will sync automatically.');
+    return {ok:false,reason:'offline'};
+  }
+
+  // Re-read the current session at sync time. This avoids a startup race where
+  // the auth module has not yet populated FIELDINSPECT_AUTH_USER.
+  if(!user()&&supabase.auth){
+    try{
+      const {data}=await supabase.auth.getSession();
+      if(data?.session?.user){
+        window.FIELDINSPECT_AUTH_USER=data.session.user;
+      }
+    }catch(error){
+      console.error('FieldInspect session refresh failed:',error);
+    }
+  }
+
+  const u=user();
+  if(!u){
+    setCloudStatus('signedout','Sign in to synchronize inspections.');
+    return {ok:false,reason:'not-authenticated'};
+  }
     setCloudStatus('offline','No internet connection. Local inspections are safe and will sync when online.');
     return {ok:false,reason:'offline'};
   }
