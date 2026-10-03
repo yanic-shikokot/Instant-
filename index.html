@@ -688,7 +688,7 @@ function autoSaveDraftToHistory(reason='autosave'){
  }
 }
 function syncCurrentHistoryStatus(){
- try{const id=state.meta?.reportId;if(!id||typeof readHistory!=='function'||typeof writeHistory!=='function')return;const list=readHistory(),idx=list.findIndex(r=>r.reportId===id);if(idx<0)return;list[idx].status=state.meta.workflowStatus||'draft';list[idx].state=snapshotState();list[idx].updatedAt=new Date().toISOString();writeHistory(list)}catch(e){console.error('History status sync failed:',e)}
+ try{const id=state.meta?.reportId;if(!id||typeof readHistory!=='function'||typeof writeHistory!=='function')return;const list=readHistory(),idx=list.findIndex(r=>r.reportId===id);if(idx<0)return;list[idx].status=state.meta.workflowStatus||'draft';list[idx].state=JSON.parse(JSON.stringify(state));list[idx].updatedAt=new Date().toISOString();writeHistory(list)}catch(e){console.error('History status sync failed:',e)}
 }
 function newInspection(){
  // New inspection is a workspace action. It must never depend on History,
