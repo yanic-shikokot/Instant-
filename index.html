@@ -242,7 +242,7 @@ if (!window.FIELDINSPECT_AUTH?.SUPABASE_URL || !window.FIELDINSPECT_AUTH?.SUPABA
      <p class="text-sm text-slate-500 mt-1">Completed reports saved on this device.</p>
     </div>
     <div class="flex items-center gap-2">
-     <button onclick="saveCurrentToHistory()" class="px-3 py-2 rounded-lg bg-indigo-600 text-white text-xs font-extrabold flex items-center gap-1.5"><i data-lucide="save" class="w-4 h-4"></i>Save current</button>
+     <button type="button" onclick="window.saveCurrentToHistory()" class="px-3 py-2 rounded-lg bg-indigo-600 text-white text-xs font-extrabold flex items-center gap-1.5"><i data-lucide="save" class="w-4 h-4"></i>Save current</button>
      <button onclick="closeHistory()" class="w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center"><i data-lucide="x" class="w-5 h-5"></i></button>
     </div>
    </div>
@@ -885,9 +885,10 @@ window.addEventListener('DOMContentLoaded',init);
  function snapshotState(){return JSON.parse(JSON.stringify(state));}
 
  window.saveCurrentToHistory=function(){
-  const copy=snapshotState();
-  const now=new Date().toISOString();
-  const id=copy.meta.reportId||('REP-'+now.replace(/\D/g,'').slice(0,14));
+  try{
+   const copy=snapshotState();
+   const now=new Date().toISOString();
+   const id=copy.meta.reportId||('REP-'+now.replace(/\D/g,'').slice(0,14));
   copy.meta.reportId=id;
   state.meta.reportId=id;
   const list=readHistory();
@@ -899,7 +900,7 @@ window.addEventListener('DOMContentLoaded',init);
   }
   const previous=existingIndex>=0?list[existingIndex]:null;
   const record={
-   id:previous?.id||crypto.randomUUID(),
+   id:previous?.id||(crypto.randomUUID?crypto.randomUUID():'HIST-'+now.replace(/\D/g,'').slice(0,17)+'-'+Math.random().toString(36).slice(2,8)),
    reportId:id,
    projectName:copy.meta.projectName||'Untitled inspection',
    clientName:copy.meta.clientName||'',
@@ -921,6 +922,11 @@ window.addEventListener('DOMContentLoaded',init);
   if(created && typeof recordInspectionUsage==='function')recordInspectionUsage();
   toast(created?'Inspection saved to history.':'Inspection history updated.');
   return {saved:true,created,recordId:record.id};
+  }catch(e){
+   console.error('FieldInspect history save failed:',e);
+   toast('Inspection could not be saved to History. Check the browser console for details.');
+   return {saved:false,created:false,error:e};
+  }
  };
  window.openHistory=function(){
   document.getElementById('historyModal').classList.remove('hidden');
