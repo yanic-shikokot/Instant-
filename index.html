@@ -251,7 +251,7 @@ if (!window.FIELDINSPECT_AUTH?.SUPABASE_URL || !window.FIELDINSPECT_AUTH?.SUPABA
   <div class="p-5 sm:p-7"><div class="grid lg:grid-cols-[1fr_180px_180px] gap-3 mb-5"><div class="relative"><i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i><input id="historySearch" oninput="renderHistory()" class="field pl-9" placeholder="Search report, project, client, inspector or location…"></div><select id="historyStatus" onchange="renderHistory()" class="field"><option value="">All workflow statuses</option><option value="draft">Draft</option><option value="in-progress">In Progress</option><option value="completed">Completed</option><option value="archived">Archived</option></select><select id="historySort" onchange="renderHistory()" class="field"><option value="updated-desc">Newest updated</option><option value="updated-asc">Oldest updated</option><option value="date-desc">Inspection date ↓</option><option value="date-asc">Inspection date ↑</option><option value="name-asc">Project A–Z</option></select></div><div id="historyCount" class="text-[11px] font-bold text-slate-500 mb-3"></div><div id="historyList" class="space-y-3"></div></div>
  </div></div>
 </div>
-<div id="trashModal" class="fixed inset-0 z-[90] hidden bg-slate-950/70 backdrop-blur-sm p-3 sm:p-6 overflow-y-auto"><div class="min-h-full flex items-center justify-center"><div class="w-full max-w-3xl bg-white rounded-3xl shadow-2xl overflow-hidden"><div class="p-5 sm:p-6 border-b border-slate-200 flex items-center justify-between"><div><h2 class="text-xl font-extrabold">Recently Deleted</h2><p class="text-xs text-slate-500 mt-1">Restore records or permanently remove them.</p></div><button onclick="closeTrash()" class="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center"><i data-lucide="x" class="w-5 h-5"></i></button></div><div class="p-5 sm:p-6"><div id="trashList" class="space-y-3"></div></div></div></div></div>
+<div id="trashModal" class="fixed inset-0 z-[90] hidden bg-slate-950/70 backdrop-blur-sm p-3 sm:p-6 overflow-y-auto"><div class="min-h-full flex items-center justify-center"><div class="w-full max-w-3xl bg-white rounded-3xl shadow-2xl overflow-hidden"><div class="p-5 sm:p-6 border-b border-slate-200 flex items-center justify-between gap-4"><div><h2 class="text-xl font-extrabold">Recently Deleted</h2><p class="text-xs text-slate-500 mt-1">Restore records or permanently remove them.</p></div><div class="flex items-center gap-2"><button id="purgeAllTrashBtn" onclick="purgeAllDeleted()" class="px-3 py-2 rounded-lg border border-rose-200 text-rose-600 text-xs font-extrabold hover:bg-rose-50">Delete all</button><button onclick="closeTrash()" class="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center"><i data-lucide="x" class="w-5 h-5"></i></button></div></div><div class="p-5 sm:p-6"><div id="trashList" class="space-y-3"></div></div></div></div></div>
 <!-- SUBSCRIPTION / PLANS -->
 <div id="paywall" class="fixed inset-0 z-[80] hidden bg-slate-950/70 backdrop-blur-sm p-3 sm:p-6 overflow-y-auto">
  <div class="min-h-full flex items-center justify-center">
@@ -1235,12 +1235,64 @@ window.duplicateHistoryRecord=async function(id){
 };
 
  window.archiveHistoryRecord=function(id){const list=readHistory(),i=list.findIndex(x=>x.id===id);if(i<0)return;list[i].status=list[i].status==='archived'?'draft':'archived';list[i].state.meta.workflowStatus=list[i].status;list[i].updatedAt=new Date().toISOString();if(writeHistory(list)){renderHistory();toast(list[i].status==='archived'?'Inspection archived.':'Inspection restored.');if(window.FIELDINSPECT_AUTH_USER&&window.FIELDINSPECT_SYNC_INSPECTIONS)window.FIELDINSPECT_SYNC_INSPECTIONS().catch(e=>console.error('FieldInspect archive cloud sync failed:',e))}};
- window.deleteHistoryRecord=function(id){const list=readHistory(),i=list.findIndex(x=>x.id===id);if(i<0||!confirm('Move this inspection to Recently Deleted?'))return;const r=list[i],next=list.filter(x=>x.id!==id);if(!writeHistory(next))return;r.deletedAt=new Date().toISOString();const trash=readTrash();trash.unshift(r);if(!writeTrash(trash))return;renderHistory();toast('Inspection moved to Recently Deleted.')};
+ window.deleteHistoryRecord=function(id){
+ const list=readHistory(),i=list.findIndex(x=>x.id===id);if(i<0||!confirm('Move this inspection to Recently Deleted?'))return;
+ const r=list[i],next=list.filter(x=>x.id!==id);
+ if(!writeHistory(next))return;
+ r.deletedAt=new Date().toISOString();
+ const trash=readTrash();trash.unshift(r);
+ if(!writeTrash(trash)){toast('The inspection was removed from History, but Recently Deleted could not be updated.');return}
+ renderHistory();toast('Inspection moved to Recently Deleted.');
+};
+
  window.openTrash=function(){document.getElementById('trashModal').classList.remove('hidden');document.body.classList.add('overflow-hidden');renderTrash()};
  window.closeTrash=function(){document.getElementById('trashModal').classList.add('hidden');document.body.classList.remove('overflow-hidden')};
- window.renderTrash=function(){const list=readTrash(),el=document.getElementById('trashList');if(!el)return;if(!list.length){el.innerHTML='<div class="border border-dashed border-slate-300 rounded-2xl p-8 text-center text-xs text-slate-500">Recently deleted is empty.</div>';return}el.innerHTML=list.map(r=>'<div class="rounded-xl border border-slate-200 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"><div><div class="font-extrabold text-sm">'+escapeHtml(r.projectName||'Untitled inspection')+'</div><div class="text-[10px] text-slate-500 mt-1">'+escapeHtml(r.reportId||'')+' · deleted '+escapeHtml(r.deletedAt?new Date(r.deletedAt).toLocaleString():'')+'</div></div><div class="flex gap-2"><button onclick="restoreDeleted(\''+r.id+'\')" class="px-3 py-2 rounded-lg bg-slate-900 text-white text-xs font-bold">Restore</button><button onclick="purgeDeleted(\''+r.id+'\')" class="px-3 py-2 rounded-lg border border-rose-200 text-rose-600 text-xs font-bold">Delete permanently</button></div></div>').join('')};
+ window.renderTrash=function(){
+ const list=readTrash(),el=document.getElementById('trashList'),btn=document.getElementById('purgeAllTrashBtn');if(!el)return;
+ if(btn){btn.disabled=!list.length;btn.classList.toggle('opacity-40',!list.length);btn.classList.toggle('cursor-not-allowed',!list.length)}
+ if(!list.length){el.innerHTML='<div class="border border-dashed border-slate-300 rounded-2xl p-8 text-center text-xs text-slate-500">Recently deleted is empty.</div>';return}
+ el.innerHTML=list.map(r=>'<div class="rounded-xl border border-slate-200 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"><div><div class="font-extrabold text-sm">'+escapeHtml(r.projectName||'Untitled inspection')+'</div><div class="text-[10px] text-slate-500 mt-1">'+escapeHtml(r.reportId||'')+' · deleted '+escapeHtml(r.deletedAt?new Date(r.deletedAt).toLocaleString():'')+'</div></div><div class="flex gap-2"><button onclick="restoreDeleted(\''+r.id+'\')" class="px-3 py-2 rounded-lg bg-slate-900 text-white text-xs font-bold">Restore</button><button onclick="purgeDeleted(\''+r.id+'\')" class="px-3 py-2 rounded-lg border border-rose-200 text-rose-600 text-xs font-bold">Delete permanently</button></div></div>').join('');
+};
+
  window.restoreDeleted=function(id){const trash=readTrash(),i=trash.findIndex(x=>x.id===id);if(i<0)return;const r=trash[i];if(readHistory().some(x=>x.reportId===r.reportId)){toast('A current inspection already uses this report ID.');return}delete r.deletedAt;const list=readHistory();list.unshift(r);if(!writeHistory(list))return;trash.splice(i,1);if(!writeTrash(trash)){toast('Inspection restored locally, but Recently Deleted could not be updated.');return}renderTrash();renderHistory();toast('Inspection restored.');if(window.FIELDINSPECT_AUTH_USER&&window.FIELDINSPECT_SYNC_INSPECTIONS){window.FIELDINSPECT_SYNC_INSPECTIONS().then(result=>{if(result.ok)toast('Inspection restored and synced to cloud.');else toast('Inspection restored locally. Cloud sync will retry when available.')}).catch(error=>console.error('FieldInspect restore cloud sync failed:',error))}};
- window.purgeDeleted=function(id){const trash=readTrash(),i=trash.findIndex(x=>x.id===id);if(i<0)return;if(!confirm('Permanently delete this inspection? This cannot be undone.'))return;trash.splice(i,1);if(writeTrash(trash)){renderTrash();toast('Inspection permanently deleted.')}};
+ window.purgeDeleted=async function(id){
+ const trash=readTrash(),i=trash.findIndex(x=>x.id===id);if(i<0)return;
+ if(!confirm('Permanently delete this inspection? This cannot be undone.'))return;
+ const r=trash[i];
+ if(window.FIELDINSPECT_AUTH_USER&&window.FIELDINSPECT_STORAGE?.deleteInspectionEvidence&&r?.state?.meta?.storageId){
+  try{await window.FIELDINSPECT_STORAGE.deleteInspectionEvidence(r.state.meta.storageId)}
+  catch(e){console.error('FieldInspect permanent cloud evidence delete failed:',e);toast('Could not remove this inspection from cloud evidence. Nothing was permanently deleted.');return}
+ }
+ trash.splice(i,1);
+ if(writeTrash(trash)){renderTrash();toast('Inspection permanently deleted.')}
+};
+
+window.purgeAllDeleted=async function(){
+ const trash=readTrash();if(!trash.length){toast('Recently Deleted is already empty.');return}
+ if(!confirm('Permanently delete all recently deleted inspections? This cannot be undone.'))return;
+ const remaining=[];
+ let failed=0;
+ if(window.FIELDINSPECT_AUTH_USER&&window.FIELDINSPECT_STORAGE?.deleteInspectionEvidence){
+  for(const r of trash){
+   if(!r?.state?.meta?.storageId)continue;
+   try{await window.FIELDINSPECT_STORAGE.deleteInspectionEvidence(r.state.meta.storageId)}
+   catch(e){failed++;remaining.push(r);console.error('FieldInspect bulk cloud evidence delete failed:',e)}
+  }
+ }else{
+  remaining.push(...trash);
+ }
+ const localOnly=remaining.length;
+ const deletedCount=trash.length-localOnly;
+ if(!window.FIELDINSPECT_AUTH_USER){
+  remaining.length=0;
+ }
+ if(writeTrash(remaining)){
+  renderTrash();
+  if(failed)toast(deletedCount+' deleted. '+failed+' cloud evidence record(s) could not be removed and were kept in Recently Deleted.');
+  else toast(trash.length+' recently deleted inspection(s) permanently removed.');
+ }
+};
+
  window.addEventListener('DOMContentLoaded',()=>{if(window.lucide?.createIcons)lucide.createIcons()});
 })();
 </script>
