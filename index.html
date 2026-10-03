@@ -844,11 +844,6 @@ function setupSig(id,key){
  c.onpointercancel=()=>sigDrawing[id]=false;
 }
 function clearSig(id){const c=document.getElementById(id),ctx=c.getContext('2d');ctx.clearRect(0,0,c.width,c.height);const key=id==='inspectorSig'?'inspector':'client';state.signatures[key]='';persist();renderReport()}
-function updatePlanUI(){
- const pro=isPro(),left=Math.max(0,subscription.reportsLeft);
- document.getElementById('planText').textContent=pro?'Pro active · '+Math.ceil((subscription.proUntil-Date.now())/86400000)+' days remaining':'Free Trial · '+left+' report'+(left===1?'':'s')+' left';
- document.getElementById('planDot').className='w-2 h-2 rounded-full '+(pro?'bg-emerald-400':'bg-amber-400');
-}
 function openPaywall(tab='plans'){document.getElementById('paywall').classList.remove('hidden');document.body.classList.add('overflow-hidden');setTimeout(()=>document.getElementById('activationCode')?.focus(),50)}
 function closePaywall(){document.getElementById('paywall').classList.add('hidden');document.body.classList.remove('overflow-hidden')}
 function selectPlan(plan){selectedPlan=plan;toast((plan==='business'?'Business':'Pro')+' plan selected. Use M-Pesa STK or your activation code below.');document.getElementById('mpesaPhone')?.focus()}
@@ -862,10 +857,18 @@ function activateCode(){
     replace this with a signed/server-verified activation response. */
  const looksLikeReceipt=/^[A-Z0-9]{8,16}$/.test(code)||/^[A-Z0-9]{4,8}(?:-[A-Z0-9]{4,8}){1,3}$/.test(code);
  if(!looksLikeReceipt){status.textContent='The code format is not recognized.';status.className='text-[10px] mt-2 text-rose-600';return}
- subscription.proUntil=Math.max(Date.now(),subscription.proUntil)+30*86400000;
- subscription.reportsLeft=2;saveSubscription();updatePlanUI();
- status.textContent='30-day Pro access activated on this device.';status.className='text-[10px] mt-2 text-emerald-600';
- toast('Pro access unlocked for 30 days.');
+ const plan=PLAN_DEFS[selectedPlan]&&selectedPlan!=='trial'?selectedPlan:'professional';
+ subscription={
+  ...subscription,
+  plan,
+  status:'ACTIVE',
+  startedAt:Date.now(),
+  currentPeriodEnd:Date.now()+30*86400000,
+  paymentMethod:'activation_code'
+ };
+ saveSubscription();updatePlanUI();
+ status.textContent='30-day '+PLAN_DEFS[plan].name+' access activated on this device.';status.className='text-[10px] mt-2 text-emerald-600';
+ toast(PLAN_DEFS[plan].name+' access unlocked for 30 days.');
  setTimeout(closePaywall,900);
 }
 async function handlePdf(){
