@@ -14,6 +14,7 @@ function historyKey(){
 }
 
 function readHistory(){
+  if(typeof window.readHistory==='function') return window.readHistory();
   try{
     const value = JSON.parse(localStorage.getItem(historyKey()) || '[]');
     return Array.isArray(value) ? value : [];
@@ -24,6 +25,7 @@ function readHistory(){
 }
 
 function writeHistory(list){
+  if(typeof window.writeHistory==='function') return window.writeHistory(list);
   try{
     localStorage.setItem(historyKey(),JSON.stringify(list.slice(0,100)));
     return true;
@@ -129,29 +131,36 @@ window.FIELDINSPECT_SYNC_INSPECTIONS=sync;
 async function boot(){
   if(typeof window.saveCurrentToHistory==='function' && !window.__cloudSaveWrapped){
     const original=window.saveCurrentToHistory;
-    window.saveCurrentToHistory=async function(){
+    // Keep the public save API synchronous. Cloud sync is a secondary
+    // operation and must never change {saved:true} into a Promise.
+    window.saveCurrentToHistory=function(){
       const saveResult=original.apply(this,arguments);
       if(user() && saveResult?.saved){
-        const result=await sync();
-        if(result.ok) toast('Inspection saved and synced to cloud.');
-        else toast('Inspection saved locally. Cloud sync will retry when available.');
+        sync().then(result=>{
+          if(result.ok) toast('Inspection saved and synced to cloud.');
+          else toast('Inspection saved locally. Cloud sync will retry when available.');
+        }).catch(error=>console.error('FieldInspect post-save cloud sync failed:',error));
       }
       return saveResult;
     };
     window.__cloudSaveWrapped=true;
   }
+
   if(typeof window.deleteHistoryRecord==='function' && !window.__cloudDeleteWrapped){
     const originalDelete=window.deleteHistoryRecord;
-    window.deleteHistoryRecord=async function(){
+    window.deleteHistoryRecord=function(){
       const before=readHistory().length;
-      originalDelete.apply(this,arguments);
+      const result=originalDelete.apply(this,arguments);
       if(user() && readHistory().length<before){
-        const result=await sync({skipPull:true});
-        if(result.ok) toast('Inspection deleted and cloud history synced.');
+        sync({skipPull:true}).then(result=>{
+          if(result.ok) toast('Inspection deleted and cloud history synced.');
+        }).catch(error=>console.error('FieldInspect post-delete cloud sync failed:',error));
       }
+      return result;
     };
     window.__cloudDeleteWrapped=true;
   }
+
   await sync();
 }
 
