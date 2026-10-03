@@ -9,7 +9,7 @@ let isQuitting = false;
 let updateCheckTimer;
 
 function logUpdate(message, details = '') {
-  const line = \`[\${new Date().toISOString()}] \${message}\${details ? ' ' + details : ''}\\n\`;
+  const line = `[${new Date().toISOString()}] ${message}${details ? ' ' + details : ''}\n`;
   try {
     const logPath = path.join(app.getPath('userData'), 'fieldinspect-updater.log');
     fs.appendFileSync(logPath, line, 'utf8');
@@ -37,7 +37,7 @@ function createWindow() {
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https?:\\/\\//i.test(url)) shell.openExternal(url);
+    if (/^https?:\/\//i.test(url)) shell.openExternal(url);
     return { action: 'deny' };
   });
 
@@ -56,26 +56,26 @@ function configureAutoUpdates() {
   autoUpdater.autoInstallEvent = 'onNextLaunch';
   autoUpdater.allowDowngrade = false;
 
-  logUpdate(\`Updater initialized. App version=\${app.getVersion()}\`);
+  logUpdate(`Updater initialized. App version=${app.getVersion()}`);
 
   autoUpdater.on('checking-for-update', () => {
     logUpdate('Checking for updates');
   });
 
   autoUpdater.on('update-available', (info) => {
-    logUpdate('Update available', \`version=\${info?.version || 'unknown'}\`);
+    logUpdate('Update available', `version=${info?.version || 'unknown'}`);
   });
 
   autoUpdater.on('update-not-available', (info) => {
-    logUpdate('No update available', \`version=\${info?.version || 'unknown'}\`);
+    logUpdate('No update available', `version=${info?.version || 'unknown'}`);
   });
 
   autoUpdater.on('download-progress', (progress) => {
-    logUpdate('Update download progress', \`\${Math.round(progress.percent || 0)}%\`);
+    logUpdate('Update download progress', `${Math.round(progress.percent || 0)}%`);
   });
 
   autoUpdater.on('update-downloaded', async (info) => {
-    logUpdate('Update downloaded', \`version=\${info?.version || 'unknown'}\`);
+    logUpdate('Update downloaded', `version=${info?.version || 'unknown'}`);
     if (isQuitting) return;
 
     const result = await dialog.showMessageBox({
@@ -84,7 +84,7 @@ function configureAutoUpdates() {
       defaultId: 0,
       cancelId: 1,
       title: 'FieldInspect Pro update ready',
-      message: \`FieldInspect Pro \${info?.version || 'a new version'} is ready to install.\`,
+      message: `FieldInspect Pro ${info?.version || 'a new version'} is ready to install.`,
       detail: 'Choose Restart and update to install it now. If you choose Later, the downloaded update will be installed automatically the next time FieldInspect Pro starts.'
     });
 
