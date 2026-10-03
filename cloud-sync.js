@@ -87,7 +87,7 @@ async function pull(){
     }
   }
 
-  const merged=[...map.values()].sort((a,b)=>Date.parse(b.updatedAt||0)-Date.parse(a.updatedAt||0);
+  const merged=[...map.values()].sort((a,b)=>Date.parse(b.updatedAt||0)-Date.parse(a.updatedAt||0));
   if(!writeHistory(merged)) throw new Error('Cloud history could not be written locally. Cloud records were not deleted.');
   if(typeof window.renderHistory==='function') window.renderHistory();
 }
