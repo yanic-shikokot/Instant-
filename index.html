@@ -990,7 +990,28 @@ window.addEventListener('DOMContentLoaded',init);
  function historyKey(){const u=window.FIELDINSPECT_AUTH_USER||null;return 'fieldinspect-pro-v2:history:'+(u?.id||u?.email||'anonymous')}
  function trashKey(){const u=window.FIELDINSPECT_AUTH_USER||null;return 'fieldinspect-pro-v2:trash:'+(u?.id||u?.email||'anonymous')}
  function readHistory(){try{const v=JSON.parse(localStorage.getItem(historyKey())||'[]');return Array.isArray(v)?v:[]}catch(e){return[]}}
- function writeHistory(v){try{localStorage.setItem(historyKey(),JSON.stringify(v.slice(0,100)));return true}catch(e){toast('Inspection history could not be saved. Browser storage may be full.');return false}}
+ function writeHistory(v){
+  const payload=JSON.stringify(v.slice(0,100));
+  try{
+    localStorage.setItem(historyKey(),payload);
+    return true;
+  }catch(e){
+    console.error('FieldInspect history save failed:',e);
+    // The active draft contains the same inspection state as the history record.
+    // Remove that duplicate first, then retry. This prevents large photo/document
+    // evidence from making "New" fail simply because localStorage is full.
+    try{
+      localStorage.removeItem(STORAGE+':draft');
+      localStorage.setItem(historyKey(),payload);
+      toast('Current inspection saved to History. Local draft storage was refreshed.');
+      return true;
+    }catch(retryError){
+      console.error('FieldInspect history retry failed:',retryError);
+      toast('Inspection history is full. Remove older inspections or supporting files, then try again.');
+      return false;
+    }
+  }
+}
  function readTrash(){try{const v=JSON.parse(localStorage.getItem(trashKey())||'[]');return Array.isArray(v)?v:[]}catch(e){return[]}}
  function writeTrash(v){try{localStorage.setItem(trashKey(),JSON.stringify(v.slice(0,100)));return true}catch(e){toast('Recently deleted could not be saved.');return false}}
  window.readHistory=readHistory;window.writeHistory=writeHistory;
