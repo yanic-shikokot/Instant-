@@ -683,8 +683,12 @@ function syncCurrentHistoryStatus(){
  try{const id=state.meta?.reportId;if(!id||typeof readHistory!=='function'||typeof writeHistory!=='function')return;const list=readHistory(),idx=list.findIndex(r=>r.reportId===id);if(idx<0)return;list[idx].status=state.meta.workflowStatus||'draft';list[idx].state=snapshotState();list[idx].updatedAt=new Date().toISOString();writeHistory(list)}catch(e){console.error('History status sync failed:',e)}
 }
 function newInspection(){
- const saved=autoSaveDraftToHistory('new-inspection');
- if(hasInspectionContent()&&!saved){toast('Current inspection could not be saved. New inspection was not started.');return}
+ const hadContent=hasInspectionContent();
+ const saved=hadContent ? autoSaveDraftToHistory('new-inspection') : false;
+
+ // New must never be blocked by the History layer. The current inspection
+ // is already held in memory; History is a secondary persistence layer.
+ // If History storage fails, still clear the workspace and start a new draft.
  state=structuredClone(DEFAULT_STATE);
  state.meta.reportId=makeId();
  state.meta.inspectionDate=today();
@@ -695,7 +699,9 @@ function newInspection(){
  renderAttachments();
  renderReport();
  setupSignatures();
- toast(saved?'Current work saved. New inspection started.':'New inspection started.');
+ toast(hadContent
+   ? (saved ? 'Current work saved. New inspection started.' : 'New inspection started. Previous work could not be added to History.')
+   : 'New inspection started.');
 }
 function loadSample(){
  state.meta={reportId:makeId(),inspectionDate:today(),projectName:'Electrical Installation & Safety Inspection',inspectorName:'Alex Morgan',clientName:'Apex Facilities Ltd',siteLocation:'Nairobi Industrial Area',conditions:'Dry · equipment operational',overallStatus:'Attention required'};
