@@ -49,7 +49,7 @@ function cloudRow(record){
     site_name:record.siteLocation||m.siteLocation||'',
     status:record.status||'draft',
     inspection_date:record.inspectionDate||m.inspectionDate||null,
-    data:s,
+    data:(typeof window.FIELDINSPECT_SERIALIZE_STATE==='function'?window.FIELDINSPECT_SERIALIZE_STATE(s):s),
     updated_at:record.updatedAt||new Date().toISOString()
   };
 }
@@ -135,11 +135,11 @@ window.FIELDINSPECT_SYNC_INSPECTIONS=sync;
 async function boot(){
   if(typeof window.saveCurrentToHistory==='function'&&!window.__cloudSaveWrapped){
     const original=window.saveCurrentToHistory;
-    window.saveCurrentToHistory=function(){
-      const saveResult=original.apply(this,arguments);
+    window.saveCurrentToHistory=async function(){
+      const saveResult=await original.apply(this,arguments);
       if(user()&&saveResult?.saved){
-        sync().then(result=>{
-          if(result.ok) toast('Inspection saved and synced to cloud.');
+        sync().then(async result=>{
+          if(result.ok){toast('Inspection saved and synced to cloud.');if(window.FIELDINSPECT_REFRESH_SUBSCRIPTION)await window.FIELDINSPECT_REFRESH_SUBSCRIPTION().catch(e=>console.error('FieldInspect subscription refresh failed:',e));}
           else toast('Inspection saved locally. Cloud sync will retry when available.');
         }).catch(error=>console.error('FieldInspect post-save cloud sync failed:',error));
       }
@@ -151,10 +151,14 @@ async function boot(){
   if(typeof window.deleteHistoryRecord==='function'&&!window.__cloudDeleteWrapped){
     const originalDelete=window.deleteHistoryRecord;
     window.deleteHistoryRecord=function(id){
-      const before=readHistory().length;
+      const beforeRecords=readHistory();
+      const before=beforeRecords.length;
+      const removed=beforeRecords.find(x=>x.id===id);
       const result=originalDelete.apply(this,arguments);
       if(user()&&readHistory().length<before){
-        deleteCloudRecord(id).then(()=>{
+        deleteCloudRecord(id).then(async()=>{
+          try{if(window.FIELDINSPECT_STORAGE?.deleteInspectionEvidence)await window.FIELDINSPECT_STORAGE.deleteInspectionEvidence(removed?.state?.meta?.storageId||removed?.reportId)}catch(e){console.error('FieldInspect cloud evidence delete failed:',e);toast('Inspection deleted, but some cloud evidence may remain.');}
+          if(window.FIELDINSPECT_REFRESH_SUBSCRIPTION)await window.FIELDINSPECT_REFRESH_SUBSCRIPTION().catch(e=>console.error('FieldInspect subscription refresh failed:',e));
           toast('Inspection deleted and cloud history synced.');
         }).catch(error=>{
           console.error('FieldInspect cloud delete failed:',error);
