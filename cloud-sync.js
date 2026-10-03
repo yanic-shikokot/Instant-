@@ -88,6 +88,7 @@ async function pull(){
   }
 
   const merged=[...map.values()].sort((a,b)=>Date.parse(b.updatedAt||0)-Date.parse(a.updatedAt||0));
+  window.FIELDINSPECT_CLOUD_STATUS={state:'merged',at:new Date().toISOString(),count:merged.length};
   if(!writeHistory(merged)) throw new Error('Cloud history could not be written locally. Cloud records were not deleted.');
   if(typeof window.renderHistory==='function') window.renderHistory();
 }
@@ -98,7 +99,11 @@ async function push(){
   if(!local.length) return;
   const rows=local.map(cloudRow);
   const {error}=await supabase.from('inspections').upsert(rows,{onConflict:'user_id,local_id'});
-  if(error) throw error;
+  if(error){
+    window.FIELDINSPECT_CLOUD_STATUS={state:'error',at:new Date().toISOString(),message:error.message||'Cloud upload failed'};
+    throw error;
+  }
+  window.FIELDINSPECT_CLOUD_STATUS={state:'pushed',at:new Date().toISOString(),count:rows.length};
 }
 
 async function deleteCloudRecord(localId){
@@ -119,9 +124,11 @@ async function sync(options={}){
       if(!options.skipPull) await pull();
       await push();
       await pull();
+      window.FIELDINSPECT_CLOUD_STATUS={state:'synced',at:new Date().toISOString(),count:readHistory().length};
       return {ok:true};
     }catch(error){
       console.error('FieldInspect cloud sync failed:',error);
+      window.FIELDINSPECT_CLOUD_STATUS={state:'error',at:new Date().toISOString(),message:error?.message||'Cloud sync failed'};
       return {ok:false,error};
     }finally{
       syncPromise=null;
@@ -131,6 +138,7 @@ async function sync(options={}){
 }
 
 window.FIELDINSPECT_SYNC_INSPECTIONS=sync;
+window.FIELDINSPECT_CLOUD_STATUS={state:'idle',at:new Date().toISOString()};
 
 async function boot(){
   if(typeof window.saveCurrentToHistory==='function'&&!window.__cloudSaveWrapped){
