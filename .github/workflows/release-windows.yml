@@ -27,7 +27,7 @@ jobs:
       - name: Prepare release tag
         shell: pwsh
         env:
-          GH_TOKEN: ${ github.token }
+          GH_TOKEN: ${{ github.token }}
         run: |
           $packageVersion = node -p "require('./package.json').version"
           $tag = "v$packageVersion"
@@ -104,32 +104,32 @@ jobs:
       - name: Create or publish GitHub release
         shell: pwsh
         env:
-          GH_TOKEN: ${ github.token }
+          GH_TOKEN: ${{ github.token }}
         run: |
           $packageVersion = node -p "require('./package.json').version"
           $tag = "v$packageVersion"
           $installer = Get-ChildItem "release" -Filter "FieldInspect-Pro-Setup-$packageVersion-*.exe" | Select-Object -First 1
           $blockmap = Get-ChildItem "release" -Filter "FieldInspect-Pro-Setup-$packageVersion-*.exe.blockmap" | Select-Object -First 1
 
-          gh release view $tag --repo "${ github.repository }" *> $null
+          gh release view $tag --repo "${{ github.repository }}" *> $null
           if ($LASTEXITCODE -ne 0) {
-            gh release create $tag --repo "${ github.repository }" --verify-tag --title "FieldInspect Pro $packageVersion" --generate-notes --latest
+            gh release create $tag --repo "${{ github.repository }}" --verify-tag --title "FieldInspect Pro $packageVersion" --generate-notes --latest
           } else {
-            gh release edit $tag --repo "${ github.repository }" --draft=false --prerelease=false --latest
+            gh release edit $tag --repo "${{ github.repository }}" --draft=false --prerelease=false --latest
           }
 
-          gh release upload $tag "$($installer.FullName)" "$($blockmap.FullName)" "release/latest.yml" --repo "${ github.repository }" --clobber
+          gh release upload $tag "$($installer.FullName)" "$($blockmap.FullName)" "release/latest.yml" --repo "${{ github.repository }}" --clobber
 
       - name: Verify published release by downloading assets
         shell: pwsh
         env:
-          GH_TOKEN: ${ github.token }
+          GH_TOKEN: ${{ github.token }}
         run: |
           $packageVersion = node -p "require('./package.json').version"
           $tag = "v$packageVersion"
           $installerName = "FieldInspect-Pro-Setup-$packageVersion-x64.exe"
 
-          $releaseJson = gh release view $tag --repo "${ github.repository }" --json isDraft,isPrerelease,assets | ConvertFrom-Json
+          $releaseJson = gh release view $tag --repo "${{ github.repository }}" --json isDraft,isPrerelease,assets | ConvertFrom-Json
           if ($releaseJson.isDraft) { throw "PUBLISH FAILURE: release is still a draft." }
           if ($releaseJson.isPrerelease) { throw "PUBLISH FAILURE: release is marked prerelease." }
 
@@ -140,7 +140,7 @@ jobs:
 
           Remove-Item -Recurse -Force "verify-release" -ErrorAction SilentlyContinue
           New-Item -ItemType Directory "verify-release" | Out-Null
-          gh release download $tag --repo "${ github.repository }" --pattern "$installerName" --pattern "$installerName.blockmap" --pattern "latest.yml" --dir "verify-release" --clobber
+          gh release download $tag --repo "${{ github.repository }}" --pattern "$installerName" --pattern "$installerName.blockmap" --pattern "latest.yml" --dir "verify-release" --clobber
 
           $downloaded = Get-Item "verify-release/$installerName"
           $localHash = (Get-FileHash $downloaded.FullName -Algorithm SHA512).Hash
