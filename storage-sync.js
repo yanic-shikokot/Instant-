@@ -1,4 +1,4 @@
-import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/+esm';
 
 const BUCKET = 'fieldinspect-evidence';
 const SIGNED_URL_TTL = 3600;
@@ -152,12 +152,14 @@ async function ensureStored(state) {
 
   for (const item of (state.items || [])) {
     for (const photo of (item.photos || [])) {
+      if (!photo.id) photo.id = 'PHOTO-' + crypto.randomUUID();
       if (!photo.storagePath && photo.data) {
         await uploadPhoto(state, photo);
       }
     }
   }
   for (const attachment of (state.attachments || [])) {
+    if (!attachment.id) attachment.id = 'DOC-' + crypto.randomUUID();
     if (!attachment.storagePath && (attachment.data || attachment.file)) {
       await uploadAttachment(state, attachment);
     }
