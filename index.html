@@ -694,7 +694,7 @@ function newInspection(){
  // New inspection is a workspace action. It must never depend on History,
  // localStorage capacity, subscription state, cloud sync, or any other
  // secondary persistence layer.
- const previous=snapshotState();
+ const previous=JSON.parse(JSON.stringify(state));
  const hadContent=hasInspectionContent();
  let historySaved=false;
 
