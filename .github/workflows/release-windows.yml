@@ -27,7 +27,7 @@ jobs:
       - name: Prepare release tag
         shell: pwsh
         env:
-          GH_TOKEN: ${ secrets.GITHUB_TOKEN }
+          GH_TOKEN: ${ github.token }
         run: |
           $packageVersion = node -p "require('./package.json').version"
           $tag = "v$packageVersion"
@@ -46,80 +46,116 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Build and publish Windows release
-        run: npx electron-builder --win nsis --publish always
-        env:
-          GH_TOKEN: ${ secrets.GITHUB_TOKEN }
+      - name: Build Windows installer without electron-builder publishing
+        run: npx electron-builder --win nsis --publish never
 
-      - name: Verify local build artifacts
+      - name: Generate update metadata
         shell: pwsh
         run: |
           $packageVersion = node -p "require('./package.json').version"
           $installer = Get-ChildItem "release" -Filter "FieldInspect-Pro-Setup-$packageVersion-*.exe" | Select-Object -First 1
           $blockmap = Get-ChildItem "release" -Filter "FieldInspect-Pro-Setup-$packageVersion-*.exe.blockmap" | Select-Object -First 1
-          $metadata = Get-ChildItem "release" -Filter "latest.yml" | Select-Object -First 1
 
           if (-not $installer) { throw "BUILD FAILURE: Windows installer was not produced." }
           if (-not $blockmap) { throw "BUILD FAILURE: Windows blockmap was not produced." }
-          if (-not $metadata) { throw "BUILD FAILURE: latest.yml was not produced." }
 
-          $metadataText = Get-Content $metadata.FullName -Raw
-          if ($metadataText -notmatch [regex]::Escape($installer.Name)) {
-            throw "BUILD FAILURE: latest.yml does not reference the generated installer $($installer.Name)."
-          }
+          $installerName = $installer.Name
+          $hash = (Get-FileHash $installer.FullName -Algorithm SHA512).Hash
+          $hashBytes = for ($i = 0; $i -lt $hash.Length; $i += 2) { [Convert]::ToByte($hash.Substring($i, 2), 16) }
+          $sha512 = [Convert]::ToBase64String($hashBytes)
+          $size = $installer.Length
+          $releaseDate = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
 
-          if ($installer.Length -lt 10MB) {
-            throw "BUILD FAILURE: installer is unexpectedly small ($($installer.Length) bytes)."
-          }
+          @"
+          version: $packageVersion
+          files:
+            - url: $installerName
+              sha512: $sha512
+              size: $size
+          path: $installerName
+          sha512: $sha512
+          releaseDate: $releaseDate
+          "@ | Set-Content -Path "release/latest.yml" -Encoding utf8
 
-          Write-Host "Installer: $($installer.Name) ($($installer.Length) bytes)"
+          Write-Host "Installer: $installerName ($size bytes)"
           Write-Host "Blockmap: $($blockmap.Name) ($($blockmap.Length) bytes)"
-          Write-Host "Metadata: $($metadata.Name) ($($metadata.Length) bytes)"
+          Write-Host "latest.yml generated with SHA-512: $sha512"
 
-      - name: Verify published GitHub release
+      - name: Verify local release artifacts
+        shell: pwsh
+        run: |
+          $packageVersion = node -p "require('./package.json').version"
+          $installer = Get-ChildItem "release" -Filter "FieldInspect-Pro-Setup-$packageVersion-*.exe" | Select-Object -First 1
+          $blockmap = Get-ChildItem "release" -Filter "FieldInspect-Pro-Setup-$packageVersion-*.exe.blockmap" | Select-Object -First 1
+          $metadata = Get-Item "release/latest.yml"
+
+          if (-not $installer) { throw "BUILD FAILURE: installer missing." }
+          if (-not $blockmap) { throw "BUILD FAILURE: blockmap missing." }
+          if ($metadata.Length -lt 100) { throw "BUILD FAILURE: latest.yml is unexpectedly small." }
+          if ($installer.Length -lt 10MB) { throw "BUILD FAILURE: installer is unexpectedly small." }
+
+          $text = Get-Content $metadata.FullName -Raw
+          if ($text -notmatch [regex]::Escape($installer.Name)) {
+            throw "BUILD FAILURE: latest.yml does not reference the installer."
+          }
+
+          Write-Host "LOCAL ARTIFACT VERIFICATION PASSED."
+
+      - name: Create or publish GitHub release
         shell: pwsh
         env:
-          GH_TOKEN: ${ secrets.GITHUB_TOKEN }
+          GH_TOKEN: ${ github.token }
         run: |
           $packageVersion = node -p "require('./package.json').version"
           $tag = "v$packageVersion"
+          $installer = Get-ChildItem "release" -Filter "FieldInspect-Pro-Setup-$packageVersion-*.exe" | Select-Object -First 1
+          $blockmap = Get-ChildItem "release" -Filter "FieldInspect-Pro-Setup-$packageVersion-*.exe.blockmap" | Select-Object -First 1
 
-          $release = $null
-          for ($attempt = 1; $attempt -le 12; $attempt++) {
-            try {
-              $json = gh release view $tag --repo "${ github.repository }" --json isDraft,isPrerelease,tagName,assets | ConvertFrom-Json
-              $release = $json
-              break
-            } catch {
-              Write-Host "Release not visible yet; retry $attempt/12..."
-              Start-Sleep -Seconds 5
-            }
+          gh release view $tag --repo "${ github.repository }" *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag --repo "${ github.repository }" --verify-tag --title "FieldInspect Pro $packageVersion" --generate-notes --latest
+          } else {
+            gh release edit $tag --repo "${ github.repository }" --draft=false --prerelease=false --latest
           }
 
-          if (-not $release) { throw "PUBLISH FAILURE: GitHub release $tag could not be read after retries." }
-          if ($release.isDraft) { throw "PUBLISH FAILURE: GitHub release $tag is still a draft." }
-          if ($release.isPrerelease) { throw "PUBLISH FAILURE: GitHub release $tag is marked prerelease." }
+          gh release upload $tag "$($installer.FullName)" "$($blockmap.FullName)" "release/latest.yml" --repo "${ github.repository }" --clobber
 
-          $assetNames = @($release.assets | ForEach-Object { $_.name })
+      - name: Verify published release by downloading assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${ github.token }
+        run: |
+          $packageVersion = node -p "require('./package.json').version"
+          $tag = "v$packageVersion"
           $installerName = "FieldInspect-Pro-Setup-$packageVersion-x64.exe"
-          $blockmapName = "$installerName.blockmap"
 
-          if ($assetNames -notcontains $installerName) {
-            throw "PUBLISH FAILURE: GitHub release is missing $installerName. Assets: $($assetNames -join ', ')"
-          }
-          if ($assetNames -notcontains $blockmapName) {
-            throw "PUBLISH FAILURE: GitHub release is missing $blockmapName. Assets: $($assetNames -join ', ')"
-          }
-          if ($assetNames -notcontains "latest.yml") {
-            throw "PUBLISH FAILURE: GitHub release is missing latest.yml. Assets: $($assetNames -join ', ')"
+          $releaseJson = gh release view $tag --repo "${ github.repository }" --json isDraft,isPrerelease,assets | ConvertFrom-Json
+          if ($releaseJson.isDraft) { throw "PUBLISH FAILURE: release is still a draft." }
+          if ($releaseJson.isPrerelease) { throw "PUBLISH FAILURE: release is marked prerelease." }
+
+          $names = @($releaseJson.assets | ForEach-Object { $_.name })
+          if ($names -notcontains $installerName) { throw "PUBLISH FAILURE: $installerName is missing." }
+          if ($names -notcontains "$installerName.blockmap") { throw "PUBLISH FAILURE: $installerName.blockmap is missing." }
+          if ($names -notcontains "latest.yml") { throw "PUBLISH FAILURE: latest.yml is missing." }
+
+          Remove-Item -Recurse -Force "verify-release" -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory "verify-release" | Out-Null
+          gh release download $tag --repo "${ github.repository }" --pattern "$installerName" --pattern "$installerName.blockmap" --pattern "latest.yml" --dir "verify-release" --clobber
+
+          $downloaded = Get-Item "verify-release/$installerName"
+          $localHash = (Get-FileHash $downloaded.FullName -Algorithm SHA512).Hash
+          $localHashBytes = for ($i = 0; $i -lt $localHash.Length; $i += 2) { [Convert]::ToByte($localHash.Substring($i, 2), 16) }
+          $localSha512 = [Convert]::ToBase64String($localHashBytes)
+
+          $metadata = Get-Content "verify-release/latest.yml" -Raw
+          if ($metadata -notmatch [regex]::Escape($localSha512)) {
+            throw "PUBLISH FAILURE: downloaded installer SHA-512 does not match downloaded latest.yml."
           }
 
-          $installerAsset = $release.assets | Where-Object { $_.name -eq $installerName } | Select-Object -First 1
-          if ($installerAsset.size -lt 10MB) {
-            throw "PUBLISH FAILURE: published installer is unexpectedly small ($($installerAsset.size) bytes)."
-          }
+          if ($downloaded.Length -lt 10MB) { throw "PUBLISH FAILURE: downloaded installer is unexpectedly small." }
 
-          Write-Host "VERIFIED GitHub release $tag"
-          Write-Host "Published installer: $installerName ($($installerAsset.size) bytes)"
-          Write-Host "Published blockmap: $blockmapName"
-          Write-Host "Published metadata: latest.yml"
+          Write-Host "PUBLISHED RELEASE VERIFICATION PASSED."
+          Write-Host "Installer: $installerName ($($downloaded.Length) bytes)"
+          Write-Host "Blockmap: present"
+          Write-Host "latest.yml: present"
+          Write-Host "SHA-512: $localSha512"
