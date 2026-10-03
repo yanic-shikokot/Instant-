@@ -406,7 +406,15 @@ function loadSubscription(){
   return merged;
  }catch(e){return defaultSubscription()}
 }
-function saveSubscription(){localStorage.setItem(subscriptionStorageKey(),JSON.stringify(subscription))}
+function saveSubscription(){
+ try{
+  localStorage.setItem(subscriptionStorageKey(),JSON.stringify(subscription));
+  return true;
+ }catch(e){
+  console.error('FieldInspect subscription save failed:',e);
+  return false;
+ }
+}
 function getPlan(){return PLAN_DEFS[subscription.plan]||PLAN_DEFS.trial}
 function isSubscriptionActive(){
  if(subscription.status==='TRIAL')return true;
@@ -644,16 +652,11 @@ function hasInspectionContent(){
 function autoSaveDraftToHistory(reason='autosave'){
  try{
   if(!hasInspectionContent())return false;
-  const copy=snapshotState();
-  const now=new Date().toISOString();
-  const id=copy.meta.reportId||makeId();
-  copy.meta.reportId=id;
-  state.meta.reportId=id;
-  const list=readHistory();
-  const existingIndex=list.findIndex(x=>x.reportId===id);
-  const previous=existingIndex>=0?list[existingIndex]:null;
+  const copy=snapshotState(),now=new Date().toISOString(),id=copy.meta.reportId||makeId();
+  copy.meta.reportId=id;state.meta.reportId=id;
+  const list=readHistory(),existingIndex=list.findIndex(x=>x.reportId===id),previous=existingIndex>=0?list[existingIndex]:null;
   const record={
-   id:previous?.id||(crypto.randomUUID?crypto.randomUUID():'HIST-'+now.replace(/\\D/g,'').slice(0,17)+'-'+Math.random().toString(36).slice(2,8)),
+   id:previous?.id||(crypto.randomUUID?crypto.randomUUID():'HIST-'+now.replace(/\D/g,'').slice(0,17)+'-'+Math.random().toString(36).slice(2,8)),
    reportId:id,
    projectName:copy.meta.projectName||'Untitled inspection',
    clientName:copy.meta.clientName||'',
@@ -661,7 +664,7 @@ function autoSaveDraftToHistory(reason='autosave'){
    siteLocation:copy.meta.siteLocation||'',
    inspectionDate:copy.meta.inspectionDate||'',
    overallStatus:copy.meta.overallStatus||'Attention required',
-   status:'draft',
+   status:previous?.status||'draft',
    createdAt:previous?.createdAt||now,
    updatedAt:now,
    state:copy
@@ -669,10 +672,12 @@ function autoSaveDraftToHistory(reason='autosave'){
   const next=list.slice();
   if(existingIndex<0)next.unshift(record);else next[existingIndex]=record;
   if(!writeHistory(next))return false;
-  persistNow();
-  renderHistory();
-  if(reason==='beforeunload')return true;
-  toast('Draft automatically saved to History.');
+
+  // History is the success boundary. Secondary persistence/UI failures cannot
+  // turn a successful History write into a reported failure.
+  try{persistNow()}catch(e){console.error('FieldInspect autosave draft refresh failed:',e)}
+  try{renderHistory()}catch(e){console.error('FieldInspect history refresh failed:',e)}
+  if(reason!=='beforeunload')toast('Draft automatically saved to History.');
   return true;
  }catch(e){
   console.error('FieldInspect autosave failed:',e);
@@ -1046,38 +1051,111 @@ window.addEventListener('DOMContentLoaded',init);
  function trashKey(){const u=window.FIELDINSPECT_AUTH_USER||null;return 'fieldinspect-pro-v2:trash:'+(u?.id||u?.email||'anonymous')}
  function readHistory(){try{const v=JSON.parse(localStorage.getItem(historyKey())||'[]');return Array.isArray(v)?v:[]}catch(e){return[]}}
  function writeHistory(v){
-  const payload=JSON.stringify(v.slice(0,100));
-  try{
-    localStorage.setItem(historyKey(),payload);
-    return true;
-  }catch(e){
-    console.error('FieldInspect history save failed:',e);
-    // The active draft contains the same inspection state as the history record.
-    // Remove that duplicate first, then retry. This prevents large photo/document
-    // evidence from making "New" fail simply because localStorage is full.
+  const key=historyKey();
+  const records=Array.isArray(v)?v.slice(0,100):[];
+  const tryWrite=(list)=>{
     try{
-      localStorage.removeItem(STORAGE+':draft');
-      localStorage.setItem(historyKey(),payload);
-      toast('Current inspection saved to History. Local draft storage was refreshed.');
+      localStorage.setItem(key,JSON.stringify(list));
       return true;
-    }catch(retryError){
-      console.error('FieldInspect history retry failed:',retryError);
-      toast('Inspection history is full. Remove older inspections or supporting files, then try again.');
+    }catch(e){
+      console.error('FieldInspect history write failed:',e);
       return false;
     }
+  };
+
+  if(tryWrite(records))return true;
+
+  // Free the duplicated active draft before retrying.
+  try{localStorage.removeItem(STORAGE+':draft')}catch(e){}
+  if(tryWrite(records))return true;
+
+  // If old history consumes the remaining quota, preserve the newest entries.
+  for(let keep=records.length-1;keep>=1;keep--){
+    if(tryWrite(records.slice(0,keep))){
+      toast('Inspection saved. Older history entries were trimmed because browser storage is full.');
+      return true;
+    }
   }
-}
+
+  // Last-resort compact mode removes only binary evidence from History so the
+  // inspection metadata/findings remain recoverable.
+  const compact=records.map(r=>{
+    const stateCopy=r?.state?JSON.parse(JSON.stringify(r.state)):null;
+    if(stateCopy){
+      stateCopy.attachments=[];
+      if(Array.isArray(stateCopy.items)){
+        stateCopy.items=stateCopy.items.map(item=>({
+          ...item,
+          photos:Array.isArray(item.photos)
+            ? item.photos.map(p=>({caption:p?.caption||'',name:p?.name||'',addedAt:p?.addedAt||''}))
+            : []
+        }));
+      }
+    }
+    return {...r,state:stateCopy,_storageMode:'compact'};
+  });
+  if(tryWrite(compact)){
+    toast('Inspection saved to History. Large photo/document evidence remains in the active draft.');
+    return true;
+  }
+
+  if(records.length&&tryWrite(compact.slice(0,1))){
+    toast('Inspection saved to History. Older history entries were removed because browser storage is full.');
+    return true;
+  }
+
+  toast('Inspection could not be saved. Browser storage is unavailable or full.');
+  return false;
+ }
  function readTrash(){try{const v=JSON.parse(localStorage.getItem(trashKey())||'[]');return Array.isArray(v)?v:[]}catch(e){return[]}}
  function writeTrash(v){try{localStorage.setItem(trashKey(),JSON.stringify(v.slice(0,100)));return true}catch(e){toast('Recently deleted could not be saved.');return false}}
  window.readHistory=readHistory;window.writeHistory=writeHistory;
  function snapshotState(){return JSON.parse(JSON.stringify(state))}
- window.saveCurrentToHistory=function(){try{
-  const copy=snapshotState(),now=new Date().toISOString(),id=copy.meta.reportId||makeId();copy.meta.reportId=id;state.meta.reportId=id;
-  const list=readHistory(),idx=list.findIndex(r=>r.reportId===id);
-  if(idx<0&&typeof canCreateInspection==='function'&&!canCreateInspection()){openPaywall('plans');toast('Your inspection allowance has been reached. Choose a plan to continue.');return{saved:false,created:false}}
-  const prev=idx>=0?list[idx]:null,record={id:prev?.id||(crypto.randomUUID?crypto.randomUUID():'HIST-'+now.replace(/\D/g,'')+'-'+Math.random().toString(36).slice(2,8)),reportId:id,projectName:copy.meta.projectName||'Untitled inspection',clientName:copy.meta.clientName||'',inspectorName:copy.meta.inspectorName||'',siteLocation:copy.meta.siteLocation||'',inspectionDate:copy.meta.inspectionDate||'',overallStatus:copy.meta.overallStatus||'Attention required',status:copy.meta.workflowStatus||prev?.status||'completed',createdAt:prev?.createdAt||now,updatedAt:now,state:copy};
-  const next=list.slice(),created=idx<0;if(created)next.unshift(record);else next[idx]=record;if(!writeHistory(next))return{saved:false,created};persistNow();renderHistory();if(created&&typeof recordInspectionUsage==='function')recordInspectionUsage();toast(created?'Inspection saved to history.':'Inspection history updated.');return{saved:true,created,recordId:record.id}
- }catch(e){console.error(e);toast('Inspection could not be saved to History.');return{saved:false,created:false,error:e}}};
+ window.saveCurrentToHistory=function(){
+  try{
+   const copy=snapshotState(),now=new Date().toISOString(),id=copy.meta.reportId||makeId();
+   copy.meta.reportId=id;state.meta.reportId=id;
+   const list=readHistory(),idx=list.findIndex(r=>r.reportId===id);
+   if(idx<0&&typeof canCreateInspection==='function'&&!canCreateInspection()){
+    openPaywall('plans');
+    toast('Your inspection allowance has been reached. Choose a plan to continue.');
+    return{saved:false,created:false};
+   }
+   const prev=idx>=0?list[idx]:null;
+   const record={
+    id:prev?.id||(crypto.randomUUID?crypto.randomUUID():'HIST-'+now.replace(/\D/g,'')+'-'+Math.random().toString(36).slice(2,8)),
+    reportId:id,
+    projectName:copy.meta.projectName||'Untitled inspection',
+    clientName:copy.meta.clientName||'',
+    inspectorName:copy.meta.inspectorName||'',
+    siteLocation:copy.meta.siteLocation||'',
+    inspectionDate:copy.meta.inspectionDate||'',
+    overallStatus:copy.meta.overallStatus||'Attention required',
+    status:copy.meta.workflowStatus||prev?.status||'draft',
+    createdAt:prev?.createdAt||now,
+    updatedAt:now,
+    state:copy
+   };
+   const next=list.slice(),created=idx<0;
+   if(created)next.unshift(record);else next[idx]=record;
+
+   // Actual History save boundary.
+   if(!writeHistory(next))return{saved:false,created};
+
+   // Everything after the History write is best-effort.
+   try{persistNow()}catch(e){console.error('FieldInspect post-history draft save failed:',e)}
+   try{renderHistory()}catch(e){console.error('FieldInspect history render failed:',e)}
+   if(created&&typeof recordInspectionUsage==='function'){
+    try{recordInspectionUsage()}catch(e){console.error('FieldInspect usage counter update failed:',e)}
+   }
+   toast(created?'Inspection saved to history.':'Inspection history updated.');
+   return{saved:true,created,recordId:record.id};
+  }catch(e){
+   console.error('FieldInspect saveCurrentToHistory failed:',e);
+   toast('Inspection could not be saved to History.');
+   return{saved:false,created:false,error:e};
+  }
+ };
  window.openHistory=function(){document.getElementById('historyModal').classList.remove('hidden');document.body.classList.add('overflow-hidden');renderHistory();setTimeout(()=>document.getElementById('historySearch')?.focus(),50)};
  window.closeHistory=function(){document.getElementById('historyModal').classList.add('hidden');document.body.classList.remove('overflow-hidden')};
  window.renderHistory=function(){
