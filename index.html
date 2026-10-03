@@ -579,6 +579,9 @@ function toast(msg){
 }
 function today(){return new Date().toISOString().slice(0,10)}
 function makeId(){const d=today().replaceAll('-','');return 'REP-'+d+'-'+Math.random().toString(36).slice(2,6).toUpperCase()}
+window.addEventListener('beforeunload',()=>{ autoSaveDraftToHistory('beforeunload'); });
+window.addEventListener('pagehide',()=>{ autoSaveDraftToHistory('beforeunload'); });
+
 function init(){
  if(!state.meta.reportId)state.meta.reportId=makeId();
  if(!state.meta.inspectionDate)state.meta.inspectionDate=today();
@@ -623,9 +626,60 @@ function applyTemplate(){
  if(!state.items.length)addDefect(false);
  bindFields();renderReport();persist();
 }
+function hasInspectionContent(){
+ const m=state.meta||{};
+ return Boolean(
+  m.projectName?.trim() ||
+  m.clientName?.trim() ||
+  m.siteLocation?.trim() ||
+  m.inspectorName?.trim() ||
+  m.conditions?.trim() ||
+  (state.items||[]).length ||
+  Object.values(state.signatures||{}).some(Boolean)
+ );
+}
+function autoSaveDraftToHistory(reason='autosave'){
+ try{
+  if(!hasInspectionContent())return false;
+  const copy=snapshotState();
+  const now=new Date().toISOString();
+  const id=copy.meta.reportId||makeId();
+  copy.meta.reportId=id;
+  state.meta.reportId=id;
+  const list=readHistory();
+  const existingIndex=list.findIndex(x=>x.reportId===id);
+  const previous=existingIndex>=0?list[existingIndex]:null;
+  const record={
+   id:previous?.id||(crypto.randomUUID?crypto.randomUUID():'HIST-'+now.replace(/\\D/g,'').slice(0,17)+'-'+Math.random().toString(36).slice(2,8)),
+   reportId:id,
+   projectName:copy.meta.projectName||'Untitled inspection',
+   clientName:copy.meta.clientName||'',
+   inspectorName:copy.meta.inspectorName||'',
+   siteLocation:copy.meta.siteLocation||'',
+   inspectionDate:copy.meta.inspectionDate||'',
+   overallStatus:copy.meta.overallStatus||'Attention required',
+   status:'draft',
+   createdAt:previous?.createdAt||now,
+   updatedAt:now,
+   state:copy
+  };
+  const next=list.slice();
+  if(existingIndex<0)next.unshift(record);else next[existingIndex]=record;
+  if(!writeHistory(next))return false;
+  persistNow();
+  renderHistory();
+  if(reason==='beforeunload')return true;
+  toast('Draft automatically saved to History.');
+  return true;
+ }catch(e){
+  console.error('FieldInspect autosave failed:',e);
+  return false;
+ }
+}
 function newInspection(){
- if(!confirm('Start a new inspection? Current draft will be cleared.'))return;
- state=structuredClone(DEFAULT_STATE);state.meta.reportId=makeId();state.meta.inspectionDate=today();persist();bindFields();renderDefects();renderReport();setupSignatures();toast('New inspection started.');
+ if(!confirm('Start a new inspection? Your current work will be automatically saved to History first.'))return;
+ autoSaveDraftToHistory('new-inspection');
+ state=structuredClone(DEFAULT_STATE);state.meta.reportId=makeId();state.meta.inspectionDate=today();persistNow();bindFields();renderDefects();renderReport();setupSignatures();toast('Current work saved. New inspection started.');
 }
 function loadSample(){
  state.meta={reportId:makeId(),inspectionDate:today(),projectName:'Electrical Installation & Safety Inspection',inspectorName:'Alex Morgan',clientName:'Apex Facilities Ltd',siteLocation:'Nairobi Industrial Area',conditions:'Dry · equipment operational',overallStatus:'Attention required'};
