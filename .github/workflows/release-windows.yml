@@ -2,11 +2,14 @@ name: Release Windows Installer
 
 on:
   push:
-    branches:
-      - main
     tags:
       - 'v*.*.*'
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (must match package.json, e.g. 1.6.3)'
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -26,54 +29,107 @@ jobs:
         with:
           node-version: 22
 
+      - name: Validate version and tag
+        shell: pwsh
+        run: |
+          $packageVersion = node -p "require('./package.json').version"
+          $expectedTag = "v$packageVersion"
+          if ("${ github.event_name }}" -eq "workflow_dispatch") {
+            $requestedVersion = "${ inputs.version }"
+            if ($requestedVersion -ne $packageVersion) {
+              throw "workflow_dispatch version $requestedVersion does not match package.json version $packageVersion."
+            }
+            $tagExists = git tag --list $expectedTag
+            if (-not $tagExists) {
+              git config user.name "github-actions[bot]"
+              git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+              git tag -a $expectedTag -m "FieldInspect Pro $packageVersion"
+              git push origin $expectedTag
+            }
+          } else {
+            if ("${ github.ref_name }}" -ne $expectedTag) {
+              throw "Git tag ${ github.ref_name } does not match package version $packageVersion."
+            }
+          }
+          Write-Host "Release version: $packageVersion"
+
       - name: Install dependencies
         run: npm install
 
-      - name: Prepare release tag
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          $packageVersion = node -p "require('./package.json').version"
-          $tag = "v$packageVersion"
-          if ("${{ github.ref_type }}" -eq "tag") {
-            if ("${{ github.ref_name }}" -ne $tag) {
-              throw "Git tag ${{ github.ref_name }} does not match package version $packageVersion."
-            }
-          } else {
-            git fetch --tags --force
-            $existing = git tag --list $tag
-            if (-not $existing) {
-              git config user.name "github-actions[bot]"
-              git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-              git tag -a $tag -m "FieldInspect Pro $packageVersion"
-              git push origin $tag
-            }
-          }
-          Write-Host "Release tag: $tag"
-
-      - name: Build and publish Windows release
+      - name: Build Windows installer
         run: npx electron-builder --win nsis --publish always
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${ secrets.GITHUB_TOKEN }
 
-      - name: Verify installer and update metadata
+      - name: Verify local build artifacts
         shell: pwsh
         run: |
           $packageVersion = node -p "require('./package.json').version"
           $installer = Get-ChildItem "release" -Filter "FieldInspect-Pro-Setup-$packageVersion-*.exe" | Select-Object -First 1
+          $blockmap = Get-ChildItem "release" -Filter "FieldInspect-Pro-Setup-$packageVersion-*.exe.blockmap" | Select-Object -First 1
           $metadata = Get-ChildItem "release" -Filter "latest.yml" | Select-Object -First 1
-          if (-not $installer) { throw "Windows installer for version $packageVersion was not produced." }
-          if (-not $metadata) { throw "latest.yml was not produced; automatic updates cannot work." }
-          Write-Host "Installer: $($installer.FullName)"
-          Write-Host "Update metadata: $($metadata.FullName)"
+
+          if (-not $installer) { throw "BUILD FAILURE: Windows installer was not produced." }
+          if (-not $blockmap) { throw "BUILD FAILURE: Windows blockmap was not produced." }
+          if (-not $metadata) { throw "BUILD FAILURE: latest.yml was not produced." }
+
+          $metadataText = Get-Content $metadata.FullName -Raw
+          if ($metadataText -notmatch [regex]::Escape($installer.Name)) {
+            throw "BUILD FAILURE: latest.yml does not reference the generated installer $($installer.Name)."
+          }
+
+          if ($installer.Length -lt 10MB) {
+            throw "BUILD FAILURE: installer is unexpectedly small ($($installer.Length) bytes)."
+          }
+
+          Write-Host "Installer: $($installer.Name) ($($installer.Length) bytes)"
+          Write-Host "Blockmap: $($blockmap.Name) ($($blockmap.Length) bytes)"
+          Write-Host "Metadata: $($metadata.Name) ($($metadata.Length) bytes)"
 
       - name: Verify published GitHub release
         shell: pwsh
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${ secrets.GITHUB_TOKEN }
         run: |
           $packageVersion = node -p "require('./package.json').version"
-          gh release view "v$packageVersion" --repo "${{ github.repository }}" --json isDraft,isPrerelease,tagName
-          $draft = gh release view "v$packageVersion" --repo "${{ github.repository }}" --json isDraft --jq ".isDraft"
-          if ($draft -eq "true") { throw "GitHub release v$packageVersion is still a draft; electron-updater cannot see draft releases." }
+          $tag = "v$packageVersion"
+
+          $release = $null
+          for ($attempt = 1; $attempt -le 12; $attempt++) {
+            try {
+              $json = gh release view $tag --repo "${ github.repository }" --json isDraft,isPrerelease,tagName,assets | ConvertFrom-Json
+              $release = $json
+              break
+            } catch {
+              Write-Host "Release not visible yet; retry $attempt/12..."
+              Start-Sleep -Seconds 5
+            }
+          }
+
+          if (-not $release) { throw "PUBLISH FAILURE: GitHub release $tag could not be read after retries." }
+          if ($release.isDraft) { throw "PUBLISH FAILURE: GitHub release $tag is still a draft." }
+          if ($release.isPrerelease) { throw "PUBLISH FAILURE: GitHub release $tag is marked prerelease." }
+
+          $assetNames = @($release.assets | ForEach-Object { $_.name })
+          $installerName = "FieldInspect-Pro-Setup-$packageVersion-x64.exe"
+          $blockmapName = "$installerName.blockmap"
+
+          if ($assetNames -notcontains $installerName) {
+            throw "PUBLISH FAILURE: GitHub release is missing $installerName. Assets: $($assetNames -join ', ')"
+          }
+          if ($assetNames -notcontains $blockmapName) {
+            throw "PUBLISH FAILURE: GitHub release is missing $blockmapName. Assets: $($assetNames -join ', ')"
+          }
+          if ($assetNames -notcontains "latest.yml") {
+            throw "PUBLISH FAILURE: GitHub release is missing latest.yml. Assets: $($assetNames -join ', ')"
+          }
+
+          $installerAsset = $release.assets | Where-Object { $_.name -eq $installerName } | Select-Object -First 1
+          if ($installerAsset.size -lt 10MB) {
+            throw "PUBLISH FAILURE: published installer is unexpectedly small ($($installerAsset.size) bytes)."
+          }
+
+          Write-Host "VERIFIED GitHub release $tag"
+          Write-Host "Published installer: $installerName ($($installerAsset.size) bytes)"
+          Write-Host "Published blockmap: $blockmapName"
+          Write-Host "Published metadata: latest.yml"
