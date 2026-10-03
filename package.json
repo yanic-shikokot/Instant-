@@ -2,7 +2,7 @@
   "name": "fieldinspect-pro",
   "productName": "FieldInspect Pro",
   "private": true,
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Commercial field inspection reporting desktop application.",
   "type": "module",
   "main": "electron/main.cjs",
@@ -50,6 +50,8 @@
     "asar": true,
     "files": [
       "index.html",
+      "auth-config.js",
+      "cloud-sync.js",
       "electron/**/*",
       "package.json"
     ],
