@@ -7,17 +7,30 @@ const supabase = window.FIELDINSPECT_SUPABASE || (
     : null
 );
 
-const HISTORY_KEY = 'fieldinspect-pro-v2:history';
+function historyKey(){
+  const current=window.FIELDINSPECT_AUTH_USER||null;
+  const key=current?.id||current?.email||'anonymous';
+  return 'fieldinspect-pro-v2:history:'+key;
+}
 
 function readHistory(){
   try{
-    const value = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+    const value = JSON.parse(localStorage.getItem(historyKey()) || '[]');
     return Array.isArray(value) ? value : [];
-  }catch(e){ return []; }
+  }catch(e){
+    console.error('FieldInspect cloud history read failed:',e);
+    return [];
+  }
 }
 
 function writeHistory(list){
-  localStorage.setItem(HISTORY_KEY,JSON.stringify(list.slice(0,100)));
+  try{
+    localStorage.setItem(historyKey(),JSON.stringify(list.slice(0,100)));
+    return true;
+  }catch(e){
+    console.error('FieldInspect cloud history write failed:',e);
+    return false;
+  }
 }
 
 function user(){
@@ -99,7 +112,7 @@ async function push(){
 }
 
 async function sync(options={}){
-  if(!supabase || !user()) return {ok:false};
+  if(!supabase || !user()) return {ok:false,reason:'not-authenticated'};
   try{
     if(!options.skipPull) await pull();
     await push();
