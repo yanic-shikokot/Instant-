@@ -160,9 +160,9 @@ async function ensureCloudSubscription(){
   if(!['TRIAL','ACTIVE'].includes(String(data.status||'').toUpperCase())){
     throw new Error('Cloud subscription is inactive.');
   }
-  if(data.inspection_limit!=null && Number(data.inspections_used||0)>=Number(data.inspection_limit)){
-    throw new Error('Cloud inspection limit reached.');
-  }
+  // Do not block synchronization when the usage limit is reached.
+  // Syncing existing records/merging history is not the same as creating a
+  // new inspection. The database trigger enforces the limit on new inserts.
   return data;
 }
 async function push(){
