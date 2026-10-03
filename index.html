@@ -998,30 +998,15 @@ function setupSig(id,key){
 function clearSig(id){const c=document.getElementById(id),ctx=c.getContext('2d');ctx.clearRect(0,0,c.width,c.height);const key=id==='inspectorSig'?'inspector':'client';state.signatures[key]='';persist();renderReport()}
 function openPaywall(tab='plans'){document.getElementById('paywall').classList.remove('hidden');document.body.classList.add('overflow-hidden');setTimeout(()=>document.getElementById('activationCode')?.focus(),50)}
 function closePaywall(){document.getElementById('paywall').classList.add('hidden');document.body.classList.remove('overflow-hidden')}
-function selectPlan(plan){selectedPlan=plan;toast((plan==='business'?'Business':'Pro')+' plan selected. Use M-Pesa STK or your activation code below.');document.getElementById('mpesaPhone')?.focus()}
+function selectPlan(plan){selectedPlan=plan;toast((plan==='business'?'Business':'Pro')+' plan selected. Continue with M-Pesa checkout.');document.getElementById('mpesaPhone')?.focus()}
 function normalizePhone(v){let x=String(v||'').replace(/[^0-9]/g,'');if(x.startsWith('0'))x='254'+x.slice(1);return x}
 async function requestMpesa(){ return startPayment(); }
 function activateCode(){
- const code=document.getElementById('activationCode').value.trim().toUpperCase();
  const status=document.getElementById('activationStatus');
- if(!code){status.textContent='Enter an activation key or M-Pesa receipt code.';status.className='text-[10px] mt-2 text-rose-600';return}
- /* Client-side validation is deliberately limited to a format check. In production,
-    replace this with a signed/server-verified activation response. */
- const looksLikeReceipt=/^[A-Z0-9]{8,16}$/.test(code)||/^[A-Z0-9]{4,8}(?:-[A-Z0-9]{4,8}){1,3}$/.test(code);
- if(!looksLikeReceipt){status.textContent='The code format is not recognized.';status.className='text-[10px] mt-2 text-rose-600';return}
- const plan=PLAN_DEFS[selectedPlan]&&selectedPlan!=='trial'?selectedPlan:'professional';
- subscription={
-  ...subscription,
-  plan,
-  status:'ACTIVE',
-  startedAt:Date.now(),
-  currentPeriodEnd:Date.now()+30*86400000,
-  paymentMethod:'activation_code'
- };
- saveSubscription();updatePlanUI();
- status.textContent='30-day '+PLAN_DEFS[plan].name+' access activated on this device.';status.className='text-[10px] mt-2 text-emerald-600';
- toast(PLAN_DEFS[plan].name+' access unlocked for 30 days.');
- setTimeout(closePaywall,900);
+ if(status){
+  status.textContent='Manual activation codes are disabled until server-side verification is connected. Use M-Pesa checkout for paid plans.';
+  status.className='text-[10px] mt-2 text-amber-700';
+ }
 }
 async function handlePdf(){
  if(window.FIELDINSPECT_REFRESH_SUBSCRIPTION){try{await window.FIELDINSPECT_REFRESH_SUBSCRIPTION()}catch(e){console.error('FieldInspect subscription refresh failed:',e)}}
