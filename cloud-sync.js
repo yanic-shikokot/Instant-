@@ -1,11 +1,14 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 
 const cfg = window.FIELDINSPECT_AUTH || {};
-const supabase = window.FIELDINSPECT_SUPABASE || (
-  cfg.SUPABASE_URL && cfg.SUPABASE_PUBLISHABLE_KEY
-    ? createClient(cfg.SUPABASE_URL, cfg.SUPABASE_PUBLISHABLE_KEY)
-    : null
-);
+let fallbackSupabase = null;
+function getSupabase(){
+  if(window.FIELDINSPECT_SUPABASE) return window.FIELDINSPECT_SUPABASE;
+  if(!fallbackSupabase && cfg.SUPABASE_URL && cfg.SUPABASE_PUBLISHABLE_KEY){
+    fallbackSupabase=createClient(cfg.SUPABASE_URL,cfg.SUPABASE_PUBLISHABLE_KEY);
+  }
+  return fallbackSupabase;
+}
 
 function historyKey(){
   const current=window.FIELDINSPECT_AUTH_USER||null;
@@ -55,6 +58,7 @@ function cloudRow(record){
 }
 
 async function pull(){
+  const supabase=getSupabase();
   if(!supabase||!user()) return;
   const {data,error}=await supabase.from('inspections')
     .select('id,local_id,title,client_name,site_name,status,inspection_date,data,created_at,updated_at')
@@ -107,6 +111,7 @@ async function push(){
 }
 
 async function deleteCloudRecord(localId){
+  const supabase=getSupabase();
   if(!supabase||!user()||!localId) return;
   const {error}=await supabase.from('inspections')
     .delete()
@@ -122,6 +127,7 @@ window.FIELDINSPECT_DELETE_CLOUD_INSPECTION=async function(localId){
 
 let syncPromise=null;
 async function sync(options={}){
+  const supabase=getSupabase();
   if(!supabase||!user()) return {ok:false,reason:'not-authenticated'};
   if(syncPromise) return syncPromise;
   syncPromise=(async()=>{
@@ -190,6 +196,6 @@ window.addEventListener('DOMContentLoaded',()=>setTimeout(boot,0));
 window.addEventListener('fieldinspect:auth-changed',()=>setTimeout(boot,0));
 window.addEventListener('online',()=>setTimeout(()=>sync(),500));
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)setTimeout(()=>sync(),300)});
-if(supabase?.auth){
-  supabase.auth.onAuthStateChange(()=>setTimeout(boot,0));
+if(getSupabase()?.auth){
+  getSupabase().auth.onAuthStateChange(()=>setTimeout(boot,0));
 }
