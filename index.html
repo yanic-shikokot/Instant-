@@ -683,25 +683,74 @@ function syncCurrentHistoryStatus(){
  try{const id=state.meta?.reportId;if(!id||typeof readHistory!=='function'||typeof writeHistory!=='function')return;const list=readHistory(),idx=list.findIndex(r=>r.reportId===id);if(idx<0)return;list[idx].status=state.meta.workflowStatus||'draft';list[idx].state=snapshotState();list[idx].updatedAt=new Date().toISOString();writeHistory(list)}catch(e){console.error('History status sync failed:',e)}
 }
 function newInspection(){
+ // New inspection is a workspace action. It must never depend on History,
+ // localStorage capacity, subscription state, cloud sync, or any other
+ // secondary persistence layer.
+ const previous=snapshotState();
  const hadContent=hasInspectionContent();
- const saved=hadContent ? autoSaveDraftToHistory('new-inspection') : false;
+ let historySaved=false;
 
- // New must never be blocked by the History layer. The current inspection
- // is already held in memory; History is a secondary persistence layer.
- // If History storage fails, still clear the workspace and start a new draft.
- state=structuredClone(DEFAULT_STATE);
+ if(hadContent){
+  try{
+   historySaved=autoSaveDraftToHistory('new-inspection')===true;
+  }catch(e){
+   console.error('FieldInspect: non-blocking New/History save error:',e);
+  }
+ }
+
+ try{
+  state=JSON.parse(JSON.stringify(DEFAULT_STATE));
+ }catch(e){
+  console.error('FieldInspect: failed to clone DEFAULT_STATE:',e);
+  state={
+   meta:{
+    reportId:'',
+    inspectionDate:'',
+    projectName:'',
+    inspectorName:'',
+    clientName:'',
+    siteLocation:'',
+    conditions:'',
+    overallStatus:'Attention required',
+    workflowStatus:'draft'
+   },
+   items:[],
+   attachments:[],
+   signatures:{inspectorSig:'',clientSig:''},
+   theme:{accent:'#4f46e5',font:'sans',template:'residential'}
+  };
+ }
+
+ state.meta=state.meta||{};
  state.meta.reportId=makeId();
  state.meta.inspectionDate=today();
  state.meta.workflowStatus='draft';
- persistNow();
- bindFields();
- renderDefects();
- renderAttachments();
- renderReport();
- setupSignatures();
- toast(hadContent
-   ? (saved ? 'Current work saved. New inspection started.' : 'New inspection started. Previous work could not be added to History.')
-   : 'New inspection started.');
+
+ // Persist the new empty draft only as a best-effort operation.
+ // Even if browser storage is unavailable/full, the in-memory workspace
+ // must still be reset and usable.
+ try{persistNow()}catch(e){console.error('FieldInspect: new draft persistence failed:',e)}
+
+ try{bindFields()}catch(e){console.error('FieldInspect: bindFields failed:',e)}
+ try{renderDefects()}catch(e){console.error('FieldInspect: renderDefects failed:',e)}
+ try{renderAttachments()}catch(e){console.error('FieldInspect: renderAttachments failed:',e)}
+ try{renderReport()}catch(e){console.error('FieldInspect: renderReport failed:',e)}
+ try{setupSignatures()}catch(e){console.error('FieldInspect: setupSignatures failed:',e)}
+
+ console.info('[FieldInspect] New inspection started', {
+  reportId:state.meta.reportId,
+  previousHadContent:hadContent,
+  previousHistorySaved:historySaved,
+  sourceVersion:'new-workspace-v2'
+ });
+
+ toast(
+  hadContent
+   ? (historySaved
+      ? 'Current work saved. New inspection started.'
+      : 'New inspection started. Previous work could not be added to History.')
+   : 'New inspection started.'
+ );
 }
 function loadSample(){
  state.meta={reportId:makeId(),inspectionDate:today(),projectName:'Electrical Installation & Safety Inspection',inspectorName:'Alex Morgan',clientName:'Apex Facilities Ltd',siteLocation:'Nairobi Industrial Area',conditions:'Dry · equipment operational',overallStatus:'Attention required'};
@@ -1284,5 +1333,5 @@ window.addEventListener('DOMContentLoaded',async()=>{
 
 <script type="module" src="./cloud-sync.js"></script>
 </body>
-<!-- Netlify deployment trigger: M-Pesa phone normalization fix verified. 2026-10-02 -->
+<!-- FieldInspect release marker: New workspace reset is persistence-independent. 2026-10-03 -->
 </html>
