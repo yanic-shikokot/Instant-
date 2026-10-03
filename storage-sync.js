@@ -208,6 +208,13 @@ async function cloneEvidence(sourceState, targetState) {
   return targetState;
 }
 
+async function deleteObjects(paths) {
+  const clean=[...new Set((paths||[]).filter(Boolean))];
+  if(!clean.length||!client()||!user())return;
+  const {error}=await client().storage.from(BUCKET).remove(clean);
+  if(error)throw error;
+}
+
 async function deleteInspectionEvidence(stateOrStorageId) {
   if (!client() || !user()) return;
   const u = requireUser();
@@ -244,5 +251,6 @@ window.FIELDINSPECT_STORAGE = {
   ensureStored,
   cloneEvidence,
   deleteInspectionEvidence,
+  deleteObjects,
   photoDataUrls
 };
