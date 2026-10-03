@@ -2,6 +2,8 @@ name: Release Windows Installer
 
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*.*.*'
   workflow_dispatch:
@@ -25,7 +27,7 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Validate package version
+      - name: Validate release version
         shell: pwsh
         run: |
           $packageVersion = node -p "require('./package.json').version"
@@ -35,18 +37,30 @@ jobs:
               throw "Git tag v$packageVersion is required, but received ${{ github.ref_name }}"
             }
           }
+          Write-Host "Publishing FieldInspect Pro version $packageVersion"
 
       - name: Build and publish Windows release
-        run: npm run release
+        run: npx electron-builder --win nsis --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Verify installer and update metadata
         shell: pwsh
         run: |
-          $installer = Get-ChildItem "release" -Filter "FieldInspect-Pro-Setup-*.exe" | Select-Object -First 1
+          $packageVersion = node -p "require('./package.json').version"
+          $installer = Get-ChildItem "release" -Filter "FieldInspect-Pro-Setup-$packageVersion-*.exe" | Select-Object -First 1
           $metadata = Get-ChildItem "release" -Filter "latest.yml" | Select-Object -First 1
-          if (-not $installer) { throw "Windows installer was not produced." }
+          if (-not $installer) { throw "Windows installer for version $packageVersion was not produced." }
           if (-not $metadata) { throw "latest.yml was not produced; automatic updates cannot work." }
           Write-Host "Installer: $($installer.FullName)"
           Write-Host "Update metadata: $($metadata.FullName)"
+
+      - name: Verify published GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $packageVersion = node -p "require('./package.json').version"
+          gh release view "v$packageVersion" --repo "${{ github.repository }}" --json isDraft,isPrerelease,tagName
+          $draft = gh release view "v$packageVersion" --repo "${{ github.repository }}" --json isDraft --jq ".isDraft"
+          if ($draft -eq "true") { throw "GitHub release v$packageVersion is still a draft; electron-updater cannot see draft releases." }
