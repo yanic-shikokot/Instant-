@@ -182,22 +182,30 @@ async function ensureCloudSubscription(){
 }
 async function push(subscription=null){
   const supabase=getSupabase(),u=user();
-  if(!supabase||!u)return {count:0,failed:[],limitReached:false};
+  if(!supabase||!u)return {count:0,failed:[],limitReached:false,inactive:false};
   const trashed=new Set(readTrash().map(x=>x?.id).filter(Boolean));
   const local=readHistory().filter(x=>x?.id&&!trashed.has(x.id));
   const failed=[];
   let pushed=0;
   let limitReached=false;
   let inactive=false;
-  const limit=subscription?.inspection_limit==null?null:Number(subscription.inspection_limit);
-  const used=Number(subscription?.inspections_used||0);
 
   for(const record of local){
     try{
-      const {data,error}=await supabase.from('inspections').upsert(
-        cloudRow(record),
-        {onConflict:'user_id,local_id'}
-      ).select('id').single();
+      const s=record.state||{};
+      const m=s.meta||{};
+      const remoteStatus=normalizeStatus(record.status||m.workflowStatus);
+      const {data,error}=await supabase.rpc('sync_inspection',{
+        p_local_id:String(record.id),
+        p_title:record.projectName||m.projectName||'Untitled inspection',
+        p_client_name:record.clientName||m.clientName||'',
+        p_site_name:record.siteLocation||m.siteLocation||'',
+        p_status:remoteStatus,
+        p_inspection_date:record.inspectionDate||m.inspectionDate||null,
+        p_data:serializeState(s),
+        p_created_at:record.createdAt||null,
+        p_updated_at:record.updatedAt||new Date().toISOString()
+      });
       if(error)throw error;
       if(!data?.id)throw new Error('Cloud inspection write was not acknowledged by Supabase.');
       pushed++;
@@ -205,24 +213,25 @@ async function push(subscription=null){
       const message=error?.message||'Cloud upload failed';
       const limited=isInspectionLimitError(error);
       const subInactive=isSubscriptionInactiveError(error);
+      const subMissing=String(error?.message||'').toUpperCase().includes('SUBSCRIPTION_NOT_FOUND');
       limitReached=limitReached||limited;
-      inactive=inactive||subInactive;
+      inactive=inactive||subInactive||subMissing;
       failed.push({
         id:record.id,
         message:limited
           ? 'New inspection blocked by the subscription inspection limit.'
           : subInactive
             ? 'New inspection blocked because the subscription is inactive.'
-            : message,
+            : subMissing
+              ? 'No cloud subscription exists for this account.'
+              : message,
         code:error?.code||'',
-        reason:limited?'inspection-limit':subInactive?'subscription-inactive':'upload-failed'
+        reason:limited?'inspection-limit':(subInactive||subMissing?'subscription-inactive':'upload-failed')
       });
       console.error('FieldInspect cloud record push failed:',record.id,error);
     }
   }
-  if(!limitReached&&limit!=null&&used>=limit&&failed.length){
-    limitReached=true;
-  }
+
   return {count:pushed,failed,limitReached,inactive};
 }
 async function deleteCloudRecord(localId){
