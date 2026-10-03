@@ -80,7 +80,7 @@ if (!window.FIELDINSPECT_AUTH?.SUPABASE_URL || !window.FIELDINSPECT_AUTH?.SUPABA
    <span id="planDot" class="w-2 h-2 rounded-full bg-amber-400"></span><span id="planText">Free Trial · 10 inspections</span>
   </button>
   <div class="flex items-center gap-1.5 order-2 sm:order-3">
-   <button onclick="newInspection()" class="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold flex items-center gap-1.5"><i data-lucide="plus" class="w-3.5 h-3.5"></i>New</button><button onclick="openHistory()" class="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold flex items-center gap-1.5"><i data-lucide="history" class="w-3.5 h-3.5"></i>History</button>
+   <button onclick="newInspection()" class="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold flex items-center gap-1.5"><i data-lucide="plus" class="w-3.5 h-3.5"></i>New</button><button onclick="openHistory()" class="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold flex items-center gap-1.5"><i data-lucide="history" class="w-3.5 h-3.5"></i>History</button><button onclick="window.FIELDINSPECT_SYNC_NOW?.()" class="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold flex items-center gap-1.5" title="Synchronize inspections with the cloud"><i data-lucide="cloud-upload" class="w-3.5 h-3.5"></i><span id="cloudSyncText">Cloud ready</span></button>
    <button id="accountButton" onclick="openAuth()" class="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold flex items-center gap-1.5"><i data-lucide="log-in" class="w-3.5 h-3.5"></i><span class="hidden sm:inline">Sign in</span></button><button onclick="loadSample()" class="hidden md:flex px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold items-center gap-1.5"><i data-lucide="sparkles" class="w-3.5 h-3.5 text-amber-300"></i>Sample</button>
    <button onclick="handlePdf()" class="px-3 py-1.5 rounded-lg text-xs font-bold text-white shadow-lg flex items-center gap-1.5" style="background:var(--accent)"><i data-lucide="file-down" class="w-4 h-4"></i>Download PDF</button>
   </div>
@@ -1279,24 +1279,21 @@ window.duplicateHistoryRecord=async function(id){
 window.purgeAllDeleted=async function(){
  const trash=readTrash();if(!trash.length){toast('Recently Deleted is already empty.');return}
  if(!confirm('Permanently delete all recently deleted inspections? This cannot be undone.'))return;
- const remaining=[];
- let failed=0;
- for(const r of trash){
-  try{
-   if(window.FIELDINSPECT_AUTH_USER&&window.FIELDINSPECT_DELETE_CLOUD_INSPECTION)await window.FIELDINSPECT_DELETE_CLOUD_INSPECTION(r.id);
-   if(window.FIELDINSPECT_AUTH_USER&&window.FIELDINSPECT_STORAGE?.deleteInspectionEvidence&&r?.state?.meta?.storageId)await window.FIELDINSPECT_STORAGE.deleteInspectionEvidence(r.state.meta.storageId);
-  }catch(e){
-   failed++;
-   remaining.push(r);
-   console.error('FieldInspect bulk permanent cloud deletion failed:',e);
+ const btn=document.getElementById('purgeAllTrashBtn');if(btn)btn.disabled=true;
+ try{
+  if(window.FIELDINSPECT_AUTH_USER&&window.FIELDINSPECT_PURGE_CLOUD_DELETED){
+   const result=await window.FIELDINSPECT_PURGE_CLOUD_DELETED(trash);
+   const failedIds=new Set((result?.failed||[]).map(x=>x.id));
+   const remaining=trash.filter(r=>failedIds.has(r.id));
+   if(!writeTrash(remaining))return;
+   renderTrash();
+   const deleted=trash.length-remaining.length;
+   if(remaining.length)toast(deleted+' permanently deleted. '+remaining.length+' kept in Recently Deleted because cloud cleanup failed.');
+   else toast(trash.length+' recently deleted inspection(s) permanently removed.');
+  }else{
+   if(writeTrash([])){renderTrash();toast(trash.length+' recently deleted inspection(s) permanently removed.')}
   }
- }
- if(writeTrash(remaining)){
-  renderTrash();
-  const deleted=trash.length-remaining.length;
-  if(failed)toast(deleted+' deleted permanently. '+failed+' kept in Recently Deleted because cloud cleanup failed.');
-  else toast(trash.length+' recently deleted inspection(s) permanently removed.');
- }
+ }finally{if(btn)btn.disabled=false}
 };
  window.addEventListener('DOMContentLoaded',()=>{if(window.lucide?.createIcons)lucide.createIcons()});
 })();
