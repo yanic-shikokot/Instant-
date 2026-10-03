@@ -1,4 +1,7 @@
 -- FieldInspect Pro commercial storage + subscription authority
+
+alter table public.inspections drop constraint if exists inspections_status_check;
+alter table public.inspections add constraint inspections_status_check check (status in ('draft','in-progress','completed','archived'));
 -- Applied to project aynlfxquofvlnthxuqcl after live verification.
 -- Keeps evidence private and makes inspection/PDF usage counters server-backed.
 
