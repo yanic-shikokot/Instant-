@@ -96,11 +96,21 @@ function createWindow() {
 function configureAutoUpdates() {
   if (!app.isPackaged) return;
 
+  // Explicitly configure the GitHub feed so the updater does not depend
+  // on a generated app-update.yml being present inside the installed app.
+  autoUpdater.setFeedURL({
+    provider: 'github',
+    owner: 'yanic-shikokot',
+    repo: 'Instant-',
+    releaseType: 'release'
+  });
+
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallEvent = 'onNextLaunch';
   autoUpdater.allowDowngrade = false;
+  autoUpdater.allowPrerelease = false;
 
-  logUpdate(`Updater initialized. App version=${app.getVersion()}`);
+  logUpdate(`Updater initialized. App version=${app.getVersion()} feed=https://github.com/yanic-shikokot/Instant-/releases`);
 
   autoUpdater.on('checking-for-update', () => logUpdate('Checking for updates'));
   autoUpdater.on('update-available', info => logUpdate('Update available', `version=${info?.version || 'unknown'}`));
@@ -134,16 +144,23 @@ function configureAutoUpdates() {
     logUpdate('Auto-update error', error?.stack || error?.message || String(error));
   });
 
-  const check = async () => {
+  const check = async (reason = 'scheduled') => {
+    if (isQuitting) return;
     try {
-      await autoUpdater.checkForUpdates();
+      logUpdate('Starting update check', `reason=${reason} current=${app.getVersion()}`);
+      const result = await autoUpdater.checkForUpdates();
+      logUpdate(
+        'Update check completed',
+        `reason=${reason} update=${result?.updateInfo?.version || 'none'}`
+      );
     } catch (error) {
       logUpdate('Update check failed', error?.stack || error?.message || String(error));
     }
   };
 
-  setTimeout(check, 8000);
-  updateCheckTimer = setInterval(check, 6 * 60 * 60 * 1000);
+  // Check shortly after startup, then every 6 hours.
+  setTimeout(() => check('startup'), 8000);
+  updateCheckTimer = setInterval(() => check('scheduled'), 6 * 60 * 60 * 1000);
 }
 
 app.whenReady().then(() => {
