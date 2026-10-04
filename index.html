@@ -58,7 +58,7 @@ button{cursor:pointer}
 .theme-soft{background:rgba(var(--accent-rgb),.08)}
 .theme-ring:focus{--tw-ring-color:rgba(var(--accent-rgb),.25)}
 ::-webkit-scrollbar{width:7px;height:7px}
-::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:999px}
+header button{padding:4px 7px!important;border-radius:6px!important;font-size:10px!important;gap:4px!important}header button i{width:12px!important;height:12px!important}header .flex.items-center.gap-2.shrink-0{gap:7px!important}header .flex.items-center.gap-1.order-2.sm\:order-3{gap:4px!important}::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:999px}
 
 @media print{
  body{background:#fff}
@@ -100,7 +100,7 @@ if (!window.FIELDINSPECT_AUTH?.SUPABASE_URL || !window.FIELDINSPECT_AUTH?.SUPABA
  </div>
 </header>
 
-<div class="sm:hidden shrink-0 sticky top-[57px] z-40 bg-slate-900/95 backdrop-blur border-b border-white/10 p-2">
+<div class="sm:hidden shrink-0 sticky top-[49px] z-40 bg-slate-900/95 backdrop-blur border-b border-white/10 p-2">
  <div class="grid grid-cols-2 bg-slate-800 p-1 rounded-xl">
   <button id="tabEditor" onclick="mobileTab('editor')" class="py-2 rounded-lg bg-indigo-600 text-white text-xs font-bold">Edit report</button>
   <button id="tabPreview" onclick="mobileTab('preview')" class="py-2 rounded-lg text-slate-300 text-xs font-bold">Preview</button>
@@ -1264,5 +1264,5 @@ window.addEventListener('DOMContentLoaded',async()=>{
 <script type="module" src="./storage-sync.js"></script>
 <script type="module" src="./cloud-sync.js"></script>
 </body>
-<!-- FieldInspect release marker: v1.6.19 startup hardening. 2026-10-04 -->
+<!-- FieldInspect release marker: v1.6.20 preview/header UI update. 2026-10-04 -->
 </html>
