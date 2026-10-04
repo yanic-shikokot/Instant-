@@ -400,7 +400,7 @@ function syncCurrentHistoryStatus(){
 }
 async function newInspection(){
  // New inspection is a workspace action. It must never depend on History,
- // localStorage capacity, subscription state, cloud sync, or any other
+ // localStorage capacity, cloud sync, or any other
  // secondary persistence layer.
  const previous=JSON.parse(JSON.stringify(state));
  const hadContent=hasInspectionContent();
@@ -450,8 +450,7 @@ async function newInspection(){
 
  try{bindFields()}catch(e){console.error('FieldInspect: bindFields failed:',e)}
  try{renderDefects()}catch(e){console.error('FieldInspect: renderDefects failed:',e)}
- try{renderAttachments()}catch(e){console.error('FieldInspect: renderAttachments failed:',e)}
- try{renderReport()}catch(e){console.error('FieldInspect: renderReport failed:',e)}
+  try{renderReport()}catch(e){console.error('FieldInspect: renderReport failed:',e)}
  try{setupSignatures()}catch(e){console.error('FieldInspect: setupSignatures failed:',e)}
 
  console.info('[FieldInspect] New inspection started', {
