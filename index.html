@@ -643,7 +643,9 @@ function fitPreview(){
  const scaleWrap=document.getElementById('reportScale');
  const sheet=document.getElementById('reportSheet');
  if(!viewport||!scaleWrap||!sheet)return;
- const available=Math.max(280,viewport.clientWidth-28);
+ const viewportWidth=viewport.clientWidth;
+ if(viewportWidth<=0)return;
+ const available=Math.max(280,viewportWidth-28);
  const sheetWidth=794;
  const scale=Math.min(1,available/sheetWidth);
  scaleWrap.style.width=sheetWidth+'px';
