@@ -49,21 +49,33 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Full source audit
+      - name: Source capitalization audit
         shell: pwsh
         run: |
-          $files = Get-ChildItem -Recurse -File -Include *.js,*.cjs,*.jsx,*.ts,*.tsx,*.html,*.json | Where-Object { $_.FullName -notmatch '\\(node_modules|dist|release)\\' }
+          $files = Get-ChildItem -Path . -Recurse -File | Where-Object { $_.Extension -in '.js','.cjs','.jsx','.ts','.tsx','.html','.json' -and $_.FullName -notmatch '\\(node_modules|dist|release)\\' }
           $bad = $files | Select-String -CaseSensitive -Pattern '@Supabase/supabase-js|@supabase/Supabase-js|@SUPABASE/supabase-js|@SUPABASE/SUPABASE-JS'
           if ($bad) { $bad | Format-List; throw "SOURCE AUDIT FAILURE: invalid Supabase package capitalization found." }
-          $jsonFiles = $files | Where-Object { $_.Extension -eq '.json' }
-          foreach ($file in $jsonFiles) { Get-Content $file.FullName -Raw | ConvertFrom-Json | Out-Null }
-          $viteConfigs = @(Get-ChildItem -File 'vite.config.*' -ErrorAction SilentlyContinue)
+          Write-Host "CAPITALIZATION AUDIT PASSED."
+
+      - name: JSON and configuration audit
+        shell: pwsh
+        run: |
+          $jsonFiles = Get-ChildItem -Path . -Recurse -File -Filter *.json | Where-Object { $_.FullName -notmatch '\\(node_modules|dist|release)\\' }
+          foreach ($file in $jsonFiles) { Write-Host "Parsing $($file.FullName)"; Get-Content $file.FullName -Raw | ConvertFrom-Json | Out-Null }
+          $viteConfigs = @(Get-ChildItem -Path . -File -Filter 'vite.config.*' -ErrorAction SilentlyContinue)
           if ($viteConfigs.Count -ne 1 -or $viteConfigs[0].Name -ne 'vite.config.js') { throw "SOURCE AUDIT FAILURE: expected exactly one vite.config.js." }
           if (-not (Test-Path 'public/auth-config.js')) { throw "SOURCE AUDIT FAILURE: public/auth-config.js is missing." }
+          Write-Host "JSON/CONFIG AUDIT PASSED."
+
+      - name: Electron syntax audit
+        shell: pwsh
+        run: |
           node --check electron/main.cjs
           node --check electron/preload.cjs
-          npm run lint
-          Write-Host "FULL SOURCE AUDIT PASSED."
+          Write-Host "ELECTRON SYNTAX AUDIT PASSED."
+
+      - name: TypeScript diagnostics
+        run: npm run lint
 
       - name: Build Windows installer without publishing
         run: npm run dist
