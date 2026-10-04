@@ -38,20 +38,26 @@ jobs:
 
           git fetch --tags --force
           $existing = git tag --list $tag
-          if (-not $existing) {
+          if ($existing) {
+            $tagSha = (git rev-list -n 1 $tag).Trim()
+            $headSha = "${{ github.sha }}".Trim()
+            if ($tagSha -ne $headSha) {
+              throw "RELEASE SAFETY FAILURE: $tag points to $tagSha but this build is $headSha. Bump package.json version before releasing again."
+            }
+          } else {
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git tag -a $tag -m "FieldInspect Pro $packageVersion"
             git push origin $tag
           }
 
-          Write-Host "Release tag: $tag"
+          Write-Host "Release tag: $tag (commit ${{ github.sha }})"
 
       - name: Install dependencies
         run: npm install
 
-      - name: Build Windows installer without electron-builder publishing
-        run: npx electron-builder --win nsis --publish never
+      - name: Build Windows installer without publishing
+        run: npm run dist
 
       - name: Generate update metadata
         shell: pwsh
