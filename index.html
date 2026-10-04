@@ -91,8 +91,8 @@ if (!window.FIELDINSPECT_AUTH?.SUPABASE_URL || !window.FIELDINSPECT_AUTH?.SUPABA
  </div>
 </div>
 
-<main class="flex-1 max-w-[1920px] mx-auto w-full flex flex-col lg:flex-row overflow-hidden">
-<section id="editorPanel" class="w-full lg:w-[47%] xl:w-[45%] lg:h-[calc(100vh-61px)] overflow-y-auto bg-white border-r border-slate-200">
+<main class="flex-1 max-w-[1920px] mx-auto w-full flex flex-row overflow-hidden">
+<section id="editorPanel" class="w-full w-full lg:w-[47%] xl:w-[45%] lg:h-[calc(100vh-61px)] overflow-y-auto bg-white border-r border-slate-200">
  <div class="p-4 sm:p-6 space-y-5">
   <div class="flex items-center justify-between border-b border-slate-200 pb-3">
    <div><h2 class="font-extrabold text-lg">Inspection workspace</h2><p class="text-xs text-slate-500 mt-0.5">Build evidence-rich reports and export A4 PDFs.</p></div>
@@ -147,8 +147,8 @@ if (!window.FIELDINSPECT_AUTH?.SUPABASE_URL || !window.FIELDINSPECT_AUTH?.SUPABA
 </div>
 </section>
 
-<section id="previewPanel" class="hidden lg:block w-full lg:w-[53%] xl:w-[55%] lg:h-[calc(100vh-61px)] bg-slate-100 overflow-hidden">
- <div class="h-full flex flex-col">
+<section id="previewPanel" class="hidden lg:flex w-full lg:w-[53%] xl:w-[55%] lg:h-[calc(100vh-61px)] bg-slate-100 overflow-hidden">
+ <div class="h-full min-h-0 flex flex-col">
   <div class="shrink-0 px-4 sm:px-5 py-3 bg-white border-b border-slate-200 flex items-center justify-between gap-3">
    <div>
     <div class="flex items-center gap-2">
@@ -162,7 +162,7 @@ if (!window.FIELDINSPECT_AUTH?.SUPABASE_URL || !window.FIELDINSPECT_AUTH?.SUPABA
     <i data-lucide="scan" class="w-3.5 h-3.5"></i>Fit
    </button>
   </div>
-  <div class="report-viewport flex-1 min-h-0">
+  <div class="report-viewport flex-1 min-h-0 overflow-auto">
    <div id="reportScale" class="report-scale">
     <div id="reportSheet" class="report-sheet"></div>
    </div>
