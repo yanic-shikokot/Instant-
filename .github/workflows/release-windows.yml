@@ -79,7 +79,7 @@ jobs:
           }
 
           foreach ($tag in @('html','head','body','main','script')) {
-            $open = ([regex]::Matches($html, '<' + $tag + '\\b', 'IgnoreCase')).Count
+            $open = ([regex]::Matches($html, '<' + $tag + '\b', 'IgnoreCase')).Count
             $close = ([regex]::Matches($html, '</' + $tag + '>', 'IgnoreCase')).Count
             if ($open -ne $close) { throw "SMOKE TEST FAILURE: malformed $tag tags ($open open / $close close)." }
           }
