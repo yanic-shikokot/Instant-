@@ -8,15 +8,18 @@ let mainWindow;
 let isQuitting = false;
 let updateCheckTimer;
 
-function logUpdate(message, details = '') {
+function log(message, details = '') {
   const line = `[${new Date().toISOString()}] ${message}${details ? ' ' + details : ''}\n`;
   try {
-    const logPath = path.join(app.getPath('userData'), 'fieldinspect-updater.log');
-    fs.appendFileSync(logPath, line, 'utf8');
+    fs.appendFileSync(path.join(app.getPath('userData'), 'fieldinspect.log'), line, 'utf8');
   } catch (error) {
-    console.error('[FieldInspect] Could not write updater log:', error);
+    console.error('[FieldInspect] Could not write log:', error);
   }
   console.info(line.trim());
+}
+
+function logUpdate(message, details = '') {
+  log(message, details);
 }
 
 function createWindow() {
@@ -27,6 +30,7 @@ function createWindow() {
     minHeight: 720,
     title: 'FieldInspect Pro',
     backgroundColor: '#f1f5f9',
+    show: false,
     autoHideMenuBar: true,
     webPreferences: {
       contextIsolation: true,
@@ -41,8 +45,50 @@ function createWindow() {
     return { action: 'deny' };
   });
 
-  const indexPath = path.join(__dirname, '..', 'index.html');
-  mainWindow.loadFile(indexPath);
+  mainWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+    log('Renderer console', `level=${level} source=${sourceId || 'unknown'}:${line || 0} ${message}`);
+  });
+
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    log('Renderer process exited', JSON.stringify(details || {}));
+    if (!isQuitting) {
+      setTimeout(() => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          loadApp();
+        }
+      }, 250);
+    }
+  });
+
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    if (!isMainFrame) return;
+    log('Renderer failed to load', `code=${errorCode} description=${errorDescription} url=${validatedURL}`);
+  });
+
+  mainWindow.webContents.on('did-finish-load', () => {
+    log('Renderer finished loading', mainWindow.webContents.getURL());
+  });
+
+  mainWindow.once('ready-to-show', () => {
+    if (!mainWindow.isDestroyed()) mainWindow.show();
+  });
+
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+  });
+
+  function loadApp() {
+    const distIndex = path.join(app.getAppPath(), 'dist', 'index.html');
+    const sourceIndex = path.join(app.getAppPath(), 'index.html');
+    const indexPath = fs.existsSync(distIndex) ? distIndex : sourceIndex;
+
+    log('Loading renderer', indexPath);
+    mainWindow.loadFile(indexPath).catch(error => {
+      log('Renderer loadFile rejected', error?.stack || error?.message || String(error));
+    });
+  }
+
+  loadApp();
 
   if (isDev) mainWindow.webContents.openDevTools();
 }
@@ -50,31 +96,18 @@ function createWindow() {
 function configureAutoUpdates() {
   if (!app.isPackaged) return;
 
-  // electron-builder generates app-update.yml from the GitHub publish
-  // configuration in package.json. Do not call setFeedURL here.
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallEvent = 'onNextLaunch';
   autoUpdater.allowDowngrade = false;
 
   logUpdate(`Updater initialized. App version=${app.getVersion()}`);
 
-  autoUpdater.on('checking-for-update', () => {
-    logUpdate('Checking for updates');
-  });
+  autoUpdater.on('checking-for-update', () => logUpdate('Checking for updates'));
+  autoUpdater.on('update-available', info => logUpdate('Update available', `version=${info?.version || 'unknown'}`));
+  autoUpdater.on('update-not-available', info => logUpdate('No update available', `version=${info?.version || 'unknown'}`));
+  autoUpdater.on('download-progress', progress => logUpdate('Update download progress', `${Math.round(progress.percent || 0)}%`));
 
-  autoUpdater.on('update-available', (info) => {
-    logUpdate('Update available', `version=${info?.version || 'unknown'}`);
-  });
-
-  autoUpdater.on('update-not-available', (info) => {
-    logUpdate('No update available', `version=${info?.version || 'unknown'}`);
-  });
-
-  autoUpdater.on('download-progress', (progress) => {
-    logUpdate('Update download progress', `${Math.round(progress.percent || 0)}%`);
-  });
-
-  autoUpdater.on('update-downloaded', async (info) => {
+  autoUpdater.on('update-downloaded', async info => {
     logUpdate('Update downloaded', `version=${info?.version || 'unknown'}`);
     if (isQuitting) return;
 
@@ -97,7 +130,7 @@ function configureAutoUpdates() {
     }
   });
 
-  autoUpdater.on('error', (error) => {
+  autoUpdater.on('error', error => {
     logUpdate('Auto-update error', error?.stack || error?.message || String(error));
   });
 
@@ -124,6 +157,8 @@ app.whenReady().then(() => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
+}).catch(error => {
+  log('Application startup failed', error?.stack || error?.message || String(error));
 });
 
 app.on('before-quit', () => {
