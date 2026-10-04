@@ -60,6 +60,14 @@ function createWindow() {
     }
   });
 
+  mainWindow.webContents.on('unresponsive', () => {
+    log('Renderer became unresponsive');
+  });
+
+  mainWindow.webContents.on('responsive', () => {
+    log('Renderer became responsive');
+  });
+
   mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
     if (!isMainFrame) return;
     log('Renderer failed to load', `code=${errorCode} description=${errorDescription} url=${validatedURL}`);
@@ -106,7 +114,9 @@ function configureAutoUpdates() {
   });
 
   autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallEvent = 'onNextLaunch';
+  // electron-updater 6.x uses autoInstallOnAppQuit. Keep installation manual so
+  // closing and immediately reopening the Windows app cannot race the NSIS installer.
+  autoUpdater.autoInstallOnAppQuit = false;
   autoUpdater.allowDowngrade = false;
   autoUpdater.allowPrerelease = false;
 
@@ -168,8 +178,10 @@ app.whenReady().then(() => {
     callback(permission === 'media');
   });
 
-  createWindow();
+  // Initialize the updater before loading the renderer. A hung renderer must
+  // never prevent the main-process updater from starting or logging its state.
   configureAutoUpdates();
+  createWindow();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
