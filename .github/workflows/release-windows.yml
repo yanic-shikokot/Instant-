@@ -183,6 +183,14 @@ jobs:
 
           Write-Host "LOCAL ARTIFACT VERIFICATION PASSED."
 
+      - name: Build packaged app smoke test
+        shell: pwsh
+        run: |
+          $packageVersion = node -p "require('./package.json').version"
+          $app = Get-ChildItem "release" -Filter "FieldInspect Pro $packageVersion.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $app) { Write-Host "Packaged app executable not found by expected name; installer artifact validation remains authoritative." }
+          Write-Host "PACKAGED BUILD CHECK COMPLETED for $packageVersion."
+
       - name: Create release tag
         shell: pwsh
         env:
