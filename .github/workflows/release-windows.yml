@@ -59,6 +59,36 @@ jobs:
       - name: Build Windows installer without publishing
         run: npm run dist
 
+      - name: Static application smoke test
+        shell: pwsh
+        run: |
+          $packageVersion = node -p "require('./package.json').version"
+          $html = Get-Content "dist/index.html" -Raw
+          $main = Get-Content "electron/main.cjs" -Raw
+
+          if ($html -notmatch 'data-fieldinspect-version="' + [regex]::Escape($packageVersion) + '"') {
+            throw "SMOKE TEST FAILURE: dist/index.html version marker does not match package.json."
+          }
+          if ($html -notmatch 'id="editorPanel"') { throw "SMOKE TEST FAILURE: Inspection Workspace editor is missing." }
+          if ($html -notmatch 'id="previewPanel"') { throw "SMOKE TEST FAILURE: Preview panel is missing." }
+          if ($html -notmatch 'id="reportSheet"') { throw "SMOKE TEST FAILURE: report preview sheet is missing." }
+          if ($html -notmatch 'workspace-editor') { throw "SMOKE TEST FAILURE: editor layout class is missing." }
+          if ($html -notmatch 'workspace-preview') { throw "SMOKE TEST FAILURE: preview layout class is missing." }
+          if ($html -match 'cdn\.jsdelivr\.net/npm/@supabase/supabase-js') {
+            throw "SMOKE TEST FAILURE: Supabase is still loaded from a remote CDN."
+          }
+
+          foreach ($tag in @('html','head','body','main','script')) {
+            $open = ([regex]::Matches($html, '<' + $tag + '\\b', 'IgnoreCase')).Count
+            $close = ([regex]::Matches($html, '</' + $tag + '>', 'IgnoreCase')).Count
+            if ($open -ne $close) { throw "SMOKE TEST FAILURE: malformed $tag tags ($open open / $close close)." }
+          }
+
+          if ($main -notmatch "dist', 'index\.html") { throw "SMOKE TEST FAILURE: Electron is not loading the Vite dist build." }
+          if ($main -notmatch 'did-fail-load') { throw "SMOKE TEST FAILURE: Electron load diagnostics are missing." }
+
+          Write-Host "STATIC APPLICATION SMOKE TEST PASSED for FieldInspect Pro $packageVersion."
+          
       - name: Generate update metadata
         shell: pwsh
         run: |
