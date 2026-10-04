@@ -2,7 +2,7 @@
   "name": "fieldinspect-pro",
   "productName": "FieldInspect Pro",
   "private": true,
-  "version": "1.6.16",
+  "version": "1.6.17",
   "description": "Commercial field inspection reporting desktop application.",
   "type": "module",
   "main": "electron/main.cjs",
