@@ -216,7 +216,7 @@ const DEFAULT_STATE={
  attachments:[]
 };
 let state=loadState();
-let subscription=loadSubscription();
+let 
 let selectedPlan='business';
 let saveTimer=null;
 let sigDrawing={inspectorSig:false,clientSig:false};
@@ -238,179 +238,6 @@ function loadState(){
   return structuredClone(DEFAULT_STATE);
  }
 }
-const PLAN_DEFS={
- trial:{name:'Free Trial',price:0,inspectionLimit:10,pdfLimit:2,seats:1,periodDays:null},
- professional:{name:'Professional',price:1500,inspectionLimit:100,pdfLimit:null,seats:1,periodDays:30},
- business:{name:'Business',price:4000,inspectionLimit:500,pdfLimit:null,seats:5,periodDays:30},
- enterprise:{name:'Enterprise',price:null,inspectionLimit:null,pdfLimit:null,seats:null,periodDays:30}
-};
-function currentUserKey(){
- const user=window.FIELDINSPECT_AUTH_USER;
- return user?.id||user?.email||'anonymous';
-}
-function subscriptionStorageKey(){
- return STORAGE+':subscription:'+currentUserKey();
-}
-function defaultSubscription(){
- return {plan:'trial',status:'TRIAL',inspectionUsed:0,pdfUsed:0,startedAt:Date.now(),currentPeriodEnd:0,paymentMethod:null,lastPaymentId:null};
-}
-function loadSubscription(){
- try{
-  const key=subscriptionStorageKey();
-  const s=JSON.parse(localStorage.getItem(key))||{};
-  const base=defaultSubscription();
-  const merged={...base,...s};
-  if(!PLAN_DEFS[merged.plan])merged.plan='trial';
-  return merged;
- }catch(e){return defaultSubscription()}
-}
-function saveSubscription(){
- try{
-  localStorage.setItem(subscriptionStorageKey(),JSON.stringify(subscription));
-  return true;
- }catch(e){
-  console.error('FieldInspect subscription save failed:',e);
-  return false;
- }
-}
-function getPlan(){return PLAN_DEFS[subscription.plan]||PLAN_DEFS.trial}
-function isSubscriptionActive(){
- if(subscription.status==='TRIAL')return true;
- if(subscription.status!=='ACTIVE')return false;
- return !subscription.currentPeriodEnd||Number(subscription.currentPeriodEnd)>Date.now();
-}
-function canCreateInspection(){
- const p=getPlan();
- return isSubscriptionActive()&&(p.inspectionLimit===null||subscription.inspectionUsed<p.inspectionLimit);
-}
-function canExportPdf(){
- const p=getPlan();
- return isSubscriptionActive()&&(p.pdfLimit===null||subscription.pdfUsed<p.pdfLimit);
-}
-function inspectionLimitText(){
- const p=getPlan();
- return p.inspectionLimit===null?'Unlimited':String(p.inspectionLimit);
-}
-function pdfLimitText(){
- const p=getPlan();
- return p.pdfLimit===null?'Unlimited':String(p.pdfLimit);
-}
-function daysRemaining(){
- if(!subscription.currentPeriodEnd)return null;
- return Math.max(0,Math.ceil((subscription.currentPeriodEnd-Date.now())/86400000));
-}
-function updatePlanUI(){
- const p=getPlan(),active=isSubscriptionActive();
- const badge=document.getElementById('planBadge'),text=document.getElementById('planText'),dot=document.getElementById('planDot');
- if(text)text.textContent=subscription.plan==='trial'
-   ? 'Free Trial · '+Math.max(0,p.inspectionLimit-subscription.inspectionUsed)+' inspections'
-   : (active?p.name+' · '+(daysRemaining()??30)+' days':'Subscription expired');
- if(dot)dot.className='w-2 h-2 rounded-full '+(active?(subscription.plan==='trial'?'bg-amber-400':'bg-emerald-400'):'bg-rose-400');
- if(badge)badge.title=p.name+' plan';
- updateSubscriptionUI();
-}
-function updateSubscriptionUI(){
- const p=getPlan(),used=subscription.inspectionUsed,limit=p.inspectionLimit;
- const name=document.getElementById('currentPlanName'),details=document.getElementById('currentPlanDetails'),usage=document.getElementById('usageValue'),bar=document.getElementById('usageBar'),status=document.getElementById('subscriptionStatusText');
- if(name)name.textContent=p.name;
- if(details)details.textContent=(limit===null?'Unlimited':limit)+' inspections · '+pdfLimitText()+' PDF exports · '+(p.seats===null?'Unlimited':p.seats)+' seat'+(p.seats===1?'':'s');
- if(usage)usage.textContent=limit===null?used+' inspections used':used+' / '+limit+' inspections';
- if(bar){const pct=limit===null?Math.min(100,used/10):Math.min(100,(used/Math.max(1,limit))*100);bar.style.width=pct+'%';bar.className='h-full rounded-full transition-all '+(pct>=90?'bg-rose-500':pct>=70?'bg-amber-500':'bg-indigo-600')}
- if(status){
-  if(subscription.plan==='trial')status.textContent='Free Trial · '+Math.max(0,p.inspectionLimit-used)+' inspections remaining. PDF exports: '+Math.max(0,p.pdfLimit-subscription.pdfUsed)+' of '+p.pdfLimit+'.';
-  else if(isSubscriptionActive())status.textContent=p.name+' is active'+(daysRemaining()!==null?' for '+daysRemaining()+' more days':'')+'. Subscription limits are managed from your account.';
-  else status.textContent='This subscription has expired. Choose a plan to reactivate it.';
- }
-}
-function resetTrialForTesting(){
- const isLocal=location.hostname==='localhost'||location.hostname==='127.0.0.1';
- if(!isLocal){toast('Developer trial reset is available only on localhost.');return false}
- subscription={...defaultSubscription()};
- saveSubscription();
- updatePlanUI();
- toast('Developer test allowance reset: 10 inspections and 2 PDF exports.');
- return true;
-}
-window.resetTrialForTesting=resetTrialForTesting;
-
-function recordInspectionUsage(){
- if(!canCreateInspection()){openPaywall('plans');toast('Your inspection allowance has been reached. Choose a plan to continue.');return false}
- subscription.inspectionUsed++;
- saveSubscription();updatePlanUI();return true;
-}
-function choosePlan(plan){
- if(!PLAN_DEFS[plan])return;
- selectedPlan=plan;
- if(plan==='trial'){
-  if(subscription.plan==='trial'){toast('You are already using the Free Trial.');updateSubscriptionUI();return}
-  toast('Free Trial is only available before a paid subscription is activated.');
-  return;
- }
- document.getElementById('mpesaPhone')?.focus();
- document.getElementById('subscriptionStatusText').textContent='Selected '+PLAN_DEFS[plan].name+'. Continue to payment to activate it.';
-}
-async function startPayment(){
- if(selectedPlan==='trial'){toast('Select Professional or Business first.');return}
- const status=document.getElementById('mpesaStatus');
- if(!window.FIELDINSPECT_AUTH_USER){
-  status.textContent='Sign in to your FieldInspect Pro account before starting a paid subscription.';
-  status.className='text-[10px] mt-2 text-amber-700';
-  openAuth('login');
-  return;
- }
- const rawPhone=document.getElementById('mpesaPhone')?.value.trim()||'';
- const digits=rawPhone.replace(/[^0-9]/g,'');
- let phone=null;
- if(/^0[17][0-9]{8}$/.test(digits)) phone='254'+digits.slice(1);
- else if(/^254[17][0-9]{8}$/.test(digits)) phone=digits;
- if(!phone){
-  status.textContent='Enter a valid Kenyan M-Pesa number, e.g. 0712345678 or 254712345678.';
-  status.className='text-[10px] mt-2 text-amber-700';
-  return;
- }
- status.textContent='Starting M-Pesa payment request…';
- status.className='text-[10px] mt-2 text-indigo-600';
- if(typeof window.FIELDINSPECT_START_MPESA!=='function'){
-  status.textContent='Billing backend is not connected yet.';
-  status.className='text-[10px] mt-2 text-amber-700';
-  return;
- }
- try{
-  const result=await window.FIELDINSPECT_START_MPESA(selectedPlan,phone);
-  if(result?.error)throw new Error(result.error.message||result.error||'Unable to start payment');
-  const checkoutRequestId=result?.data?.checkoutRequestId;
-  if(!checkoutRequestId)throw new Error('M-Pesa request was accepted without a checkout reference. Check payment history before retrying.');
-  status.textContent='M-Pesa request accepted. Waiting for payment result…';
-  status.className='text-[10px] mt-2 text-indigo-600';
-  toast('M-Pesa request accepted. Complete the sandbox test payment if prompted.');
-  const payment=await window.FIELDINSPECT_WAIT_FOR_PAYMENT(checkoutRequestId,18);
-  if(payment?.status==='SUCCESS'){
-   
-   updatePlanUI();
-   status.textContent='Payment confirmed. Your '+(PLAN_DEFS[selectedPlan]?.name||selectedPlan)+' subscription is now active.';
-   status.className='text-[10px] mt-2 text-emerald-700';
-   toast('Payment confirmed. Subscription activated.');
-   return;
-  }
-  if(payment?.status==='FAILED'){
-   status.textContent='Payment failed or was cancelled: '+(payment.result_description||'Daraja returned a failed payment.');
-   status.className='text-[10px] mt-2 text-rose-700';
-   return;
-  }
-  status.textContent='Payment is still pending. You can continue using FieldInspect Pro and check your account again shortly.';
-  status.className='text-[10px] mt-2 text-amber-700';
- }catch(error){
-  status.textContent=error?.message||'Unable to start M-Pesa payment.';
-  status.className='text-[10px] mt-2 text-rose-700';
- }
-}
-function openPaywall(tab='plans'){
- updateSubscriptionUI();
- document.getElementById('paywall').classList.remove('hidden');
- document.body.classList.add('overflow-hidden');
- if(window.lucide?.createIcons)lucide.createIcons();
-}
-function closePaywall(){document.getElementById('paywall').classList.add('hidden');document.body.classList.remove('overflow-hidden')}
 function stateForPersistence(source){
  const copy=JSON.parse(JSON.stringify(source));
  copy.items=(copy.items||[]).map(item=>({
@@ -469,7 +296,7 @@ async function init(){
  if(!state.meta.reportId)state.meta.reportId=makeId();
  if(!state.meta.storageId)state.meta.storageId=state.meta.reportId;
  if(!state.meta.inspectionDate)state.meta.inspectionDate=today();
- bindFields();renderThemes();renderDefects();renderReport();setupSignatures();updatePlanUI();lucide.createIcons();
+ bindFields();renderThemes();renderDefects();renderReport();setupSignatures();lucide.createIcons();
  if(window.FIELDINSPECT_STORAGE?.hydrate){try{await window.FIELDINSPECT_STORAGE.hydrate(state);renderDefects();renderReport()}catch(e){console.error('FieldInspect evidence hydration failed:',e)}}
  window.addEventListener('resize',fitPreview);
  fitPreview();
@@ -816,18 +643,7 @@ function setupSig(id,key){
  c.onpointercancel=()=>sigDrawing[id]=false;
 }
 function clearSig(id){const c=document.getElementById(id),ctx=c.getContext('2d');ctx.clearRect(0,0,c.width,c.height);const key=id==='inspectorSig'?'inspector':'client';state.signatures[key]='';persist();renderReport()}
-function openPaywall(tab='plans'){document.getElementById('paywall').classList.remove('hidden');document.body.classList.add('overflow-hidden');setTimeout(()=>document.getElementById('activationCode')?.focus(),50)}
-function closePaywall(){document.getElementById('paywall').classList.add('hidden');document.body.classList.remove('overflow-hidden')}
-function selectPlan(plan){selectedPlan=plan;toast((plan==='business'?'Business':'Pro')+' plan selected. Continue with M-Pesa checkout.');document.getElementById('mpesaPhone')?.focus()}
-function normalizePhone(v){let x=String(v||'').replace(/[^0-9]/g,'');if(x.startsWith('0'))x='254'+x.slice(1);return x}
-async function requestMpesa(){ return startPayment(); }
-function activateCode(){
- const status=document.getElementById('activationStatus');
- if(status){
-  status.textContent='Manual activation codes are disabled until server-side verification is connected. Use M-Pesa checkout for paid plans.';
-  status.className='text-[10px] mt-2 text-amber-700';
- }
-}
+
 async function handlePdf(){
  const modal=document.getElementById('pdfModal');
  const status=document.getElementById('pdfStatus'),progress=document.getElementById('pdfProgress');
@@ -1178,7 +994,7 @@ window.submitAuth=async function(){
       const {data,error}=await supabase.auth.signUp({email,password,options:{data:{full_name:name},emailRedirectTo:authRedirectUrl()||undefined}});
       if(error)throw error;
       if(data.session){
-        authUser=data.session.user; window.FIELDINSPECT_AUTH_USER=authUser; subscription=loadSubscription(); updatePlanUI();
+        authUser=data.session.user; window.FIELDINSPECT_AUTH_USER=authUser; 
         authMessage('Account created successfully.','success');
         closeAuth();
       }else{
@@ -1189,9 +1005,9 @@ window.submitAuth=async function(){
       if(error)throw error;
       authUser=data.user;
       window.FIELDINSPECT_AUTH_USER=authUser;
-      subscription=loadSubscription();
+      
       updateAuthUI();
-      updatePlanUI();
+      
       
       closeAuth();
       toast('Signed in successfully.');
@@ -1234,15 +1050,15 @@ window.signOutUser=async function(){
   if(!supabase)return;
   const {error}=await supabase.auth.signOut();
   if(error){authMessage(error.message);return}
-  authUser=null; window.FIELDINSPECT_AUTH_USER=null; subscription=loadSubscription(); closeAuth(); updateAuthUI(); updatePlanUI(); toast('Signed out.');
+  authUser=null; window.FIELDINSPECT_AUTH_USER=null; closeAuth(); updateAuthUI(); toast('Signed out.');
 };
 window.addEventListener('DOMContentLoaded',async()=>{
   document.getElementById('authSetup')?.classList.toggle('hidden',supabaseReady);
   if(!supabase){updateAuthUI();return}
   const {data}=await supabase.auth.getSession();
-  authUser=data.session?.user||null; window.FIELDINSPECT_AUTH_USER=authUser; subscription=loadSubscription(); updateAuthUI(); updatePlanUI(); 
+  authUser=data.session?.user||null; window.FIELDINSPECT_AUTH_USER=authUser; updateAuthUI(); 
   supabase.auth.onAuthStateChange((_event,session)=>{
-    authUser=session?.user||null; window.FIELDINSPECT_AUTH_USER=authUser; subscription=loadSubscription(); updateAuthUI(); updatePlanUI(); 
+    authUser=session?.user||null; window.FIELDINSPECT_AUTH_USER=authUser; updateAuthUI(); 
   });
   const recovery=location.hash.includes('type=recovery');
   if(recovery){
