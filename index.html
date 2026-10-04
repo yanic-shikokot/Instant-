@@ -54,7 +54,6 @@ button{cursor:pointer}
 }
 </style>
 <script src="auth-config.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2"></script>
 <script>
 // Production fallback: guarantees the public Supabase client configuration is
 // available even if a static-host cache temporarily serves index.html without
@@ -192,6 +191,14 @@ if (!window.FIELDINSPECT_AUTH?.SUPABASE_URL || !window.FIELDINSPECT_AUTH?.SUPABA
 <script>
 'use strict';
 
+/* FieldInspect Pro — single-file application configuration.
+   A real STK push requires a server endpoint. Set this value in production:
+   window.FIELDINSPECT_CONFIG={MPESA_STK_ENDPOINT:'/api/mpesa/stkpush'}
+*/
+window.FIELDINSPECT_CONFIG=window.FIELDINSPECT_CONFIG||{};
+window.FIELDINSPECT_CONFIG.MPESA_STK_ENDPOINT=window.FIELDINSPECT_CONFIG.MPESA_STK_ENDPOINT||
+  ((window.FIELDINSPECT_AUTH?.SUPABASE_FUNCTIONS_URL||'')+'/mpesa-stk-push');
+
 const STORAGE='fieldinspect-pro-v2';
 const THEMES={
  violet:{name:'Indigo',hex:'#4f46e5',rgb:'79,70,229'},
@@ -209,6 +216,8 @@ const DEFAULT_STATE={
  attachments:[]
 };
 let state=loadState();
+let subscription=loadSubscription();
+let selectedPlan='business';
 let saveTimer=null;
 let sigDrawing={inspectorSig:false,clientSig:false};
 
@@ -221,7 +230,7 @@ function loadState(){
    ...saved,
    meta:{...structuredClone(DEFAULT_STATE.meta),...(saved.meta||{})},
    signatures:{...structuredClone(DEFAULT_STATE.signatures),...(saved.signatures||{})},
-   attachments:[],
+   attachments:Array.isArray(saved.attachments)?saved.attachments:[],
    items:Array.isArray(saved.items)?saved.items.map(item=>({...item,risk:item.risk||'',recommendation:item.recommendation||'',photos:Array.isArray(item.photos)?item.photos.map(p=>({...p,caption:p.caption||''})):[]})):[]
   };
  }catch(e){
@@ -229,13 +238,873 @@ function loadState(){
   return structuredClone(DEFAULT_STATE);
  }
 }
-const cfg = window.FIELDINSPECT_AUTH || {};
-const supabaseReady = Boolean(cfg.SUPABASE_URL && cfg.SUPABASE_PUBLISHABLE_KEY && window.supabase?.createClient);
-const supabaseClient = supabaseReady
-  ? window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_PUBLISHABLE_KEY)
-  : null;
-window.FIELDINSPECT_SUPABASE = supabaseClient;
+const PLAN_DEFS={
+ trial:{name:'Free Trial',price:0,inspectionLimit:10,pdfLimit:2,seats:1,periodDays:null},
+ professional:{name:'Professional',price:1500,inspectionLimit:100,pdfLimit:null,seats:1,periodDays:30},
+ business:{name:'Business',price:4000,inspectionLimit:500,pdfLimit:null,seats:5,periodDays:30},
+ enterprise:{name:'Enterprise',price:null,inspectionLimit:null,pdfLimit:null,seats:null,periodDays:30}
+};
+function currentUserKey(){
+ const user=window.FIELDINSPECT_AUTH_USER;
+ return user?.id||user?.email||'anonymous';
+}
+function subscriptionStorageKey(){
+ return STORAGE+':subscription:'+currentUserKey();
+}
+function defaultSubscription(){
+ return {plan:'trial',status:'TRIAL',inspectionUsed:0,pdfUsed:0,startedAt:Date.now(),currentPeriodEnd:0,paymentMethod:null,lastPaymentId:null};
+}
+function loadSubscription(){
+ try{
+  const key=subscriptionStorageKey();
+  const s=JSON.parse(localStorage.getItem(key))||{};
+  const base=defaultSubscription();
+  const merged={...base,...s};
+  if(!PLAN_DEFS[merged.plan])merged.plan='trial';
+  return merged;
+ }catch(e){return defaultSubscription()}
+}
+function saveSubscription(){
+ try{
+  localStorage.setItem(subscriptionStorageKey(),JSON.stringify(subscription));
+  return true;
+ }catch(e){
+  console.error('FieldInspect subscription save failed:',e);
+  return false;
+ }
+}
+function getPlan(){return PLAN_DEFS[subscription.plan]||PLAN_DEFS.trial}
+function isSubscriptionActive(){
+ if(subscription.status==='TRIAL')return true;
+ if(subscription.status!=='ACTIVE')return false;
+ return !subscription.currentPeriodEnd||Number(subscription.currentPeriodEnd)>Date.now();
+}
+function canCreateInspection(){
+ const p=getPlan();
+ return isSubscriptionActive()&&(p.inspectionLimit===null||subscription.inspectionUsed<p.inspectionLimit);
+}
+function canExportPdf(){
+ const p=getPlan();
+ return isSubscriptionActive()&&(p.pdfLimit===null||subscription.pdfUsed<p.pdfLimit);
+}
+function inspectionLimitText(){
+ const p=getPlan();
+ return p.inspectionLimit===null?'Unlimited':String(p.inspectionLimit);
+}
+function pdfLimitText(){
+ const p=getPlan();
+ return p.pdfLimit===null?'Unlimited':String(p.pdfLimit);
+}
+function daysRemaining(){
+ if(!subscription.currentPeriodEnd)return null;
+ return Math.max(0,Math.ceil((subscription.currentPeriodEnd-Date.now())/86400000));
+}
+function updatePlanUI(){
+ const p=getPlan(),active=isSubscriptionActive();
+ const badge=document.getElementById('planBadge'),text=document.getElementById('planText'),dot=document.getElementById('planDot');
+ if(text)text.textContent=subscription.plan==='trial'
+   ? 'Free Trial · '+Math.max(0,p.inspectionLimit-subscription.inspectionUsed)+' inspections'
+   : (active?p.name+' · '+(daysRemaining()??30)+' days':'Subscription expired');
+ if(dot)dot.className='w-2 h-2 rounded-full '+(active?(subscription.plan==='trial'?'bg-amber-400':'bg-emerald-400'):'bg-rose-400');
+ if(badge)badge.title=p.name+' plan';
+ updateSubscriptionUI();
+}
+function updateSubscriptionUI(){
+ const p=getPlan(),used=subscription.inspectionUsed,limit=p.inspectionLimit;
+ const name=document.getElementById('currentPlanName'),details=document.getElementById('currentPlanDetails'),usage=document.getElementById('usageValue'),bar=document.getElementById('usageBar'),status=document.getElementById('subscriptionStatusText');
+ if(name)name.textContent=p.name;
+ if(details)details.textContent=(limit===null?'Unlimited':limit)+' inspections · '+pdfLimitText()+' PDF exports · '+(p.seats===null?'Unlimited':p.seats)+' seat'+(p.seats===1?'':'s');
+ if(usage)usage.textContent=limit===null?used+' inspections used':used+' / '+limit+' inspections';
+ if(bar){const pct=limit===null?Math.min(100,used/10):Math.min(100,(used/Math.max(1,limit))*100);bar.style.width=pct+'%';bar.className='h-full rounded-full transition-all '+(pct>=90?'bg-rose-500':pct>=70?'bg-amber-500':'bg-indigo-600')}
+ if(status){
+  if(subscription.plan==='trial')status.textContent='Free Trial · '+Math.max(0,p.inspectionLimit-used)+' inspections remaining. PDF exports: '+Math.max(0,p.pdfLimit-subscription.pdfUsed)+' of '+p.pdfLimit+'.';
+  else if(isSubscriptionActive())status.textContent=p.name+' is active'+(daysRemaining()!==null?' for '+daysRemaining()+' more days':'')+'. Subscription limits are managed from your account.';
+  else status.textContent='This subscription has expired. Choose a plan to reactivate it.';
+ }
+}
+function resetTrialForTesting(){
+ const isLocal=location.hostname==='localhost'||location.hostname==='127.0.0.1';
+ if(!isLocal){toast('Developer trial reset is available only on localhost.');return false}
+ subscription={...defaultSubscription()};
+ saveSubscription();
+ updatePlanUI();
+ toast('Developer test allowance reset: 10 inspections and 2 PDF exports.');
+ return true;
+}
+window.resetTrialForTesting=resetTrialForTesting;
 
+function recordInspectionUsage(){
+ if(!canCreateInspection()){openPaywall('plans');toast('Your inspection allowance has been reached. Choose a plan to continue.');return false}
+ subscription.inspectionUsed++;
+ saveSubscription();updatePlanUI();return true;
+}
+function choosePlan(plan){
+ if(!PLAN_DEFS[plan])return;
+ selectedPlan=plan;
+ if(plan==='trial'){
+  if(subscription.plan==='trial'){toast('You are already using the Free Trial.');updateSubscriptionUI();return}
+  toast('Free Trial is only available before a paid subscription is activated.');
+  return;
+ }
+ document.getElementById('mpesaPhone')?.focus();
+ document.getElementById('subscriptionStatusText').textContent='Selected '+PLAN_DEFS[plan].name+'. Continue to payment to activate it.';
+}
+async function startPayment(){
+ if(selectedPlan==='trial'){toast('Select Professional or Business first.');return}
+ const status=document.getElementById('mpesaStatus');
+ if(!window.FIELDINSPECT_AUTH_USER){
+  status.textContent='Sign in to your FieldInspect Pro account before starting a paid subscription.';
+  status.className='text-[10px] mt-2 text-amber-700';
+  openAuth('login');
+  return;
+ }
+ const rawPhone=document.getElementById('mpesaPhone')?.value.trim()||'';
+ const digits=rawPhone.replace(/[^0-9]/g,'');
+ let phone=null;
+ if(/^0[17][0-9]{8}$/.test(digits)) phone='254'+digits.slice(1);
+ else if(/^254[17][0-9]{8}$/.test(digits)) phone=digits;
+ if(!phone){
+  status.textContent='Enter a valid Kenyan M-Pesa number, e.g. 0712345678 or 254712345678.';
+  status.className='text-[10px] mt-2 text-amber-700';
+  return;
+ }
+ status.textContent='Starting M-Pesa payment request…';
+ status.className='text-[10px] mt-2 text-indigo-600';
+ if(typeof window.FIELDINSPECT_START_MPESA!=='function'){
+  status.textContent='Billing backend is not connected yet.';
+  status.className='text-[10px] mt-2 text-amber-700';
+  return;
+ }
+ try{
+  const result=await window.FIELDINSPECT_START_MPESA(selectedPlan,phone);
+  if(result?.error)throw new Error(result.error.message||result.error||'Unable to start payment');
+  const checkoutRequestId=result?.data?.checkoutRequestId;
+  if(!checkoutRequestId)throw new Error('M-Pesa request was accepted without a checkout reference. Check payment history before retrying.');
+  status.textContent='M-Pesa request accepted. Waiting for payment result…';
+  status.className='text-[10px] mt-2 text-indigo-600';
+  toast('M-Pesa request accepted. Complete the sandbox test payment if prompted.');
+  const payment=await window.FIELDINSPECT_WAIT_FOR_PAYMENT(checkoutRequestId,18);
+  if(payment?.status==='SUCCESS'){
+   
+   updatePlanUI();
+   status.textContent='Payment confirmed. Your '+(PLAN_DEFS[selectedPlan]?.name||selectedPlan)+' subscription is now active.';
+   status.className='text-[10px] mt-2 text-emerald-700';
+   toast('Payment confirmed. Subscription activated.');
+   return;
+  }
+  if(payment?.status==='FAILED'){
+   status.textContent='Payment failed or was cancelled: '+(payment.result_description||'Daraja returned a failed payment.');
+   status.className='text-[10px] mt-2 text-rose-700';
+   return;
+  }
+  status.textContent='Payment is still pending. You can continue using FieldInspect Pro and check your account again shortly.';
+  status.className='text-[10px] mt-2 text-amber-700';
+ }catch(error){
+  status.textContent=error?.message||'Unable to start M-Pesa payment.';
+  status.className='text-[10px] mt-2 text-rose-700';
+ }
+}
+function openPaywall(tab='plans'){
+ updateSubscriptionUI();
+ document.getElementById('paywall').classList.remove('hidden');
+ document.body.classList.add('overflow-hidden');
+ if(window.lucide?.createIcons)lucide.createIcons();
+}
+function closePaywall(){document.getElementById('paywall').classList.add('hidden');document.body.classList.remove('overflow-hidden')}
+function stateForPersistence(source){
+ const copy=JSON.parse(JSON.stringify(source));
+ copy.items=(copy.items||[]).map(item=>({
+  ...item,
+  photos:(item.photos||[]).map(photo=>{
+   const p={...photo};
+   if(p.storagePath){delete p.data;delete p.url}
+   return p;
+  })
+ }));
+ copy.attachments=[];
+ return copy;
+}
+window.FIELDINSPECT_SERIALIZE_STATE=stateForPersistence;
+
+function persist(){
+ clearTimeout(saveTimer);
+ setSaveStatus('Saving…');
+ saveTimer=setTimeout(()=>{
+  try{
+   localStorage.setItem(STORAGE+':draft',JSON.stringify(stateForPersistence(state)));
+   setSaveStatus('Saved · '+new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}));
+  }catch(e){
+   console.error('FieldInspect draft save failed:',e);
+   setSaveStatus('Save failed');
+   toast('Draft could not be saved locally. Check available browser storage.');
+  }
+ },250);
+}
+function persistNow(){
+ clearTimeout(saveTimer);
+ try{
+  localStorage.setItem(STORAGE+':draft',JSON.stringify(state));
+  setSaveStatus('Saved');
+  return true;
+ }catch(e){
+  console.error('FieldInspect immediate draft save failed:',e);
+  setSaveStatus('Save failed');
+  toast('Draft could not be saved locally. Check available browser storage.');
+  return false;
+ }
+}
+function setSaveStatus(t){
+ const el=document.getElementById('saveStatus'); if(el){el.textContent=t;el.className='text-[10px] font-bold '+(t.startsWith('Saved')?'text-emerald-700 bg-emerald-50 border border-emerald-200':'text-amber-700 bg-amber-50 border border-amber-200')+' rounded-full px-2 py-1';}
+}
+function escapeHtml(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function toast(msg){
+ const el=document.getElementById('toast');el.textContent=msg;el.classList.remove('hidden');clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.classList.add('hidden'),4200);
+}
+function today(){return new Date().toISOString().slice(0,10)}
+function makeId(){const d=today().replaceAll('-','');return 'REP-'+d+'-'+Math.random().toString(36).slice(2,6).toUpperCase()}
+window.addEventListener('beforeunload',()=>{ autoSaveDraftToHistory('beforeunload'); });
+window.addEventListener('pagehide',()=>{ autoSaveDraftToHistory('beforeunload'); });
+
+async function init(){
+ if(!state.meta.reportId)state.meta.reportId=makeId();
+ if(!state.meta.storageId)state.meta.storageId=state.meta.reportId;
+ if(!state.meta.inspectionDate)state.meta.inspectionDate=today();
+ bindFields();renderThemes();renderDefects();renderReport();setupSignatures();updatePlanUI();lucide.createIcons();
+ if(window.FIELDINSPECT_STORAGE?.hydrate){try{await window.FIELDINSPECT_STORAGE.hydrate(state);renderDefects();renderReport()}catch(e){console.error('FieldInspect evidence hydration failed:',e)}}
+ window.addEventListener('resize',fitPreview);
+ fitPreview();
+}
+function bindFields(){
+ const map={reportId:['meta','reportId'],inspectionDate:['meta','inspectionDate'],projectName:['meta','projectName'],inspectorName:['meta','inspectorName'],clientName:['meta','clientName'],siteLocation:['meta','siteLocation'],conditions:['meta','conditions'],overallStatus:['meta','overallStatus'],workflowStatus:['meta','workflowStatus']};
+ Object.entries(map).forEach(([id,path])=>{
+  const el=document.getElementById(id);
+  if(!el)return;
+  el.value=state[path[0]][path[1]]||'';
+  if(el.dataset.fieldBound!=='1'){
+   el.addEventListener('input',()=>{
+    state[path[0]][path[1]]=el.value;
+    persist();
+    if(id==='workflowStatus'&&typeof syncCurrentHistoryStatus==='function')syncCurrentHistoryStatus();
+    renderReport();
+   });
+   el.dataset.fieldBound='1';
+  }
+ });
+ const font=document.getElementById('fontSelect');
+ if(font)font.value=state.font;
+ const template=document.getElementById('templateSelect');
+ if(template && template.dataset.templateBound!=='1'){
+  template.addEventListener('change',applyTemplate);
+  template.dataset.templateBound='1';
+ }
+}
+function renderThemes(){
+ const wrap=document.getElementById('themeButtons');
+ wrap.innerHTML=Object.entries(THEMES).map(([key,t])=>'<button title="'+t.name+'" onclick="setTheme(\''+key+'\')" class="w-7 h-7 rounded-lg border-2 '+(state.theme===key?'border-slate-900':'border-transparent')+' flex items-center justify-center" style="background:'+t.hex+'">'+(state.theme===key?'✓':'')+'</button>').join('');
+}
+function setTheme(key){state.theme=key;document.documentElement.style.setProperty('--accent',THEMES[key].hex);document.documentElement.style.setProperty('--accent-rgb',THEMES[key].rgb);renderThemes();persist();renderReport();lucide.createIcons()}
+function setFont(font){state.font=font;persist();renderReport()}
+function applyTemplate(){
+ const t=document.getElementById('templateSelect').value;
+ const names={residential:'Residential Property Inspection',commercial:'Commercial HVAC Inspection',punchlist:'Contractor Punchlist',roofing:'Roofing & Flashing Inspection',electrical:'Electrical Panel Inspection'};
+ state.meta.projectName=names[t]||names.residential;
+ if(t==='electrical')state.meta.conditions='System energized · visual and functional checks';
+ if(!state.items.length)addDefect(false);
+ bindFields();renderReport();persist();
+}
+function hasInspectionContent(){
+ const m=state.meta||{};
+ return Boolean(
+  m.projectName?.trim() ||
+  m.clientName?.trim() ||
+  m.siteLocation?.trim() ||
+  m.inspectorName?.trim() ||
+  m.conditions?.trim() ||
+  (state.items||[]).length ||
+  Object.values(state.signatures||{}).some(Boolean)
+ );
+}
+async function autoSaveDraftToHistory(reason='autosave'){
+ try{
+  if(!hasInspectionContent())return false;
+  // This function lives in the main application scope. Do not call the
+  // history IIFE's private snapshotState(), because that function is not
+  // visible here and would make New inspection fail before History is written.
+  if(window.FIELDINSPECT_STORAGE&&window.FIELDINSPECT_AUTH_USER){try{await window.FIELDINSPECT_STORAGE.ensureStored(state)}catch(e){console.error('FieldInspect evidence migration failed:',e)}}
+  const copy=stateForPersistence(state),now=new Date().toISOString(),id=copy.meta.reportId||makeId();
+  copy.meta.reportId=id;state.meta.reportId=id;
+  const list=readHistory(),existingIndex=list.findIndex(x=>x.reportId===id),previous=existingIndex>=0?list[existingIndex]:null;
+  const record={
+   id:previous?.id||(crypto.randomUUID?crypto.randomUUID():'HIST-'+now.replace(/\D/g,'').slice(0,17)+'-'+Math.random().toString(36).slice(2,8)),
+   reportId:id,
+   projectName:copy.meta.projectName||'Untitled inspection',
+   clientName:copy.meta.clientName||'',
+   inspectorName:copy.meta.inspectorName||'',
+   siteLocation:copy.meta.siteLocation||'',
+   inspectionDate:copy.meta.inspectionDate||'',
+   overallStatus:copy.meta.overallStatus||'Attention required',
+   status:previous?.status||'draft',
+   createdAt:previous?.createdAt||now,
+   updatedAt:now,
+   state:copy
+  };
+  const next=list.slice();
+  if(existingIndex<0)next.unshift(record);else next[existingIndex]=record;
+  if(!writeHistory(next))return false;
+
+  // History is the success boundary. Secondary persistence/UI failures cannot
+  // turn a successful History write into a reported failure.
+  try{persistNow()}catch(e){console.error('FieldInspect autosave draft refresh failed:',e)}
+  try{renderHistory()}catch(e){console.error('FieldInspect history refresh failed:',e)}
+  if(reason!=='beforeunload')toast('Draft automatically saved to History.');
+  return true;
+ }catch(e){
+  console.error('FieldInspect autosave failed:',e);
+  return false;
+ }
+}
+function syncCurrentHistoryStatus(){
+ try{
+  const id=state.meta?.reportId;if(!id||typeof readHistory!=='function'||typeof writeHistory!=='function')return;
+  const list=readHistory(),idx=list.findIndex(r=>r.reportId===id);if(idx<0)return;
+  list[idx].status=state.meta.workflowStatus||'draft';list[idx].state=stateForPersistence(state);list[idx].updatedAt=new Date().toISOString();
+  if(writeHistory(list)&&window.FIELDINSPECT_AUTH_USER&&window.FIELDINSPECT_SYNC_INSPECTIONS)window.FIELDINSPECT_SYNC_INSPECTIONS().catch(e=>console.error('FieldInspect workflow cloud sync failed:',e));
+ }catch(e){console.error('History status sync failed:',e)}
+}
+async function newInspection(){
+ // New inspection is a workspace action. It must never depend on History,
+ // localStorage capacity, subscription state, cloud sync, or any other
+ // secondary persistence layer.
+ const previous=JSON.parse(JSON.stringify(state));
+ const hadContent=hasInspectionContent();
+ let historySaved=false;
+
+ if(hadContent){
+  try{
+   historySaved=await autoSaveDraftToHistory('new-inspection')===true;
+  }catch(e){
+   console.error('FieldInspect: non-blocking New/History save error:',e);
+  }
+ }
+
+ try{
+  state=JSON.parse(JSON.stringify(DEFAULT_STATE));
+ }catch(e){
+  console.error('FieldInspect: failed to clone DEFAULT_STATE:',e);
+  state={
+   meta:{
+    reportId:'',
+    inspectionDate:'',
+    projectName:'',
+    inspectorName:'',
+    clientName:'',
+    siteLocation:'',
+    conditions:'',
+    overallStatus:'Attention required',
+    workflowStatus:'draft'
+   },
+   items:[],
+   attachments:[],
+   signatures:{inspectorSig:'',clientSig:''},
+   theme:{accent:'#4f46e5',font:'sans',template:'residential'}
+  };
+ }
+
+ state.meta=state.meta||{};
+ state.meta.reportId=makeId();
+ state.meta.storageId=makeId();
+ state.meta.inspectionDate=today();
+ state.meta.workflowStatus='draft';
+
+ // Persist the new empty draft only as a best-effort operation.
+ // Even if browser storage is unavailable/full, the in-memory workspace
+ // must still be reset and usable.
+ try{persistNow()}catch(e){console.error('FieldInspect: new draft persistence failed:',e)}
+
+ try{bindFields()}catch(e){console.error('FieldInspect: bindFields failed:',e)}
+ try{renderDefects()}catch(e){console.error('FieldInspect: renderDefects failed:',e)}
+ try{renderAttachments()}catch(e){console.error('FieldInspect: renderAttachments failed:',e)}
+ try{renderReport()}catch(e){console.error('FieldInspect: renderReport failed:',e)}
+ try{setupSignatures()}catch(e){console.error('FieldInspect: setupSignatures failed:',e)}
+
+ console.info('[FieldInspect] New inspection started', {
+  reportId:state.meta.reportId,
+  previousHadContent:hadContent,
+  previousHistorySaved:historySaved,
+  sourceVersion:'new-workspace-v2'
+ });
+
+ toast(
+  hadContent
+   ? (historySaved
+      ? 'Current work saved. New inspection started.'
+      : 'New inspection started. Previous work could not be added to History.')
+   : 'New inspection started.'
+ );
+}
+function loadSample(){
+ state.meta={reportId:makeId(),inspectionDate:today(),projectName:'Electrical Installation & Safety Inspection',inspectorName:'Alex Morgan',clientName:'Apex Facilities Ltd',siteLocation:'Nairobi Industrial Area',conditions:'Dry · equipment operational',overallStatus:'Attention required'};
+ state.items=[
+  {title:'Distribution board labeling',severity:'high',location:'Main electrical room',notes:'Main incomer label is missing.\nCircuit identifiers are inconsistent.',risk:'Incorrect isolation and electrical shock risk.',recommendation:'Update panel schedule and install durable circuit labels.',photos:[]},
+  {title:'Machine earthing',severity:'medium',location:'Production line 2',notes:'Earth conductor is present but termination requires tightening.',risk:'Elevated touch-voltage risk if continuity is compromised.',recommendation:'Tighten termination and verify protective conductor continuity.',photos:[]},
+  {title:'Emergency lighting',severity:'low',location:'Workshop corridor',notes:'One fitting shows reduced illumination.',risk:'Reduced visibility during an outage.',recommendation:'Replace the lamp during the next scheduled service.',photos:[]}
+ ];
+ bindFields();renderDefects();renderReport();persist();toast('Sample inspection loaded.');
+}
+function addDefect(shouldFocus=true){
+ state.items.push({title:'New inspection finding',severity:'medium',location:'',notes:'',risk:'',recommendation:'',photos:[]});
+ renderDefects();persist();renderReport();
+ if(shouldFocus){const els=document.querySelectorAll('[data-item-title]');els[els.length-1]?.focus()}
+}
+function removeDefect(i){
+ if(!state.items[i])return;
+ if(!confirm('Delete this finding?'))return;
+ state.items.splice(i,1);renderDefects();persist();renderReport();toast('Finding deleted.');
+}
+function updateItem(i,key,value){if(!state.items[i])return;state.items[i][key]=value;persist();renderReport()}
+function inspectionSummary(){
+ const items=state.items||[];
+ return {total:items.length,high:items.filter(x=>x.severity==='high').length,medium:items.filter(x=>x.severity==='medium').length,low:items.filter(x=>x.severity==='low').length,withPhotos:items.filter(x=>(x.photos||[]).length).length};
+}
+function normalizeBullets(value){
+ return value.split('\n').map(x=>x.replace(/^\s*[•*-]\s*/,'').trim()).filter(Boolean).map(x=>'• '+x).join('\n');
+}
+function handleNotesKey(e,i){
+ if(e.key==='Enter'){
+  e.preventDefault();
+  const el=e.target,start=el.selectionStart,end=el.selectionEnd;
+  const before=el.value.slice(0,start),after=el.value.slice(end);
+  const lineStart=before.lastIndexOf('\n')+1;
+  const current=before.slice(lineStart).replace(/^\s*•\s?/,'').trim();
+  const prefix=current?'\n• ':'• ';
+  el.value=before+prefix+after;
+  el.selectionStart=el.selectionEnd=start+prefix.length;
+  updateItem(i,'notes',el.value);
+ }else if(e.key==='Backspace'){
+  // keep bullet UX clean when deleting an empty bullet
+  const el=e.target,pos=el.selectionStart;
+  if(pos===el.selectionEnd&&el.value.slice(0,pos).endsWith('• ')){
+   e.preventDefault();el.value=el.value.slice(0,pos-2)+el.value.slice(pos);el.selectionStart=el.selectionEnd=pos-2;updateItem(i,'notes',el.value);
+  }
+}
+}
+function renderDefects(){
+ const wrap=document.getElementById('defects');
+ if(!state.items.length){wrap.innerHTML='<div class="border border-dashed border-slate-300 rounded-xl p-8 text-center"><i data-lucide="scan-search" class="w-8 h-8 mx-auto text-slate-300"></i><div class="font-bold text-sm mt-2">No findings yet</div><p class="text-xs text-slate-400 mt-1">Add your first inspection finding.</p><button onclick="addDefect()" class="mt-3 theme-accent text-xs font-bold">+ Add finding</button></div>';lucide.createIcons();return}
+ wrap.innerHTML=state.items.map((it,i)=>{
+  it.photos=Array.isArray(it.photos)?it.photos:[];
+  return '<article class="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-3" data-card="'+i+'">'+
+   '<div class="flex items-center gap-2"><span class="w-6 h-6 rounded-lg bg-slate-900 text-white text-[10px] font-black flex items-center justify-center">'+(i+1)+'</span><input data-item-title value="'+escapeHtml(it.title)+'" oninput="updateItem('+i+',\'title\',this.value)" class="flex-1 bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:border-indigo-500"><button onclick="removeDefect('+i+')" title="Delete finding" class="text-slate-400 hover:text-rose-600"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div>'+
+   '<div class="grid sm:grid-cols-2 gap-2"><label class="text-[10px] uppercase font-bold text-slate-500">Severity<select onchange="updateItem('+i+',\'severity\',this.value)" class="field !mt-1 !py-1.5"><option '+(it.severity==='high'?'selected':'')+' value="high">High / Critical</option><option '+(it.severity==='medium'?'selected':'')+' value="medium">Medium / Monitor</option><option '+(it.severity==='low'?'selected':'')+' value="low">Low / Advisory</option></select></label><label class="text-[10px] uppercase font-bold text-slate-500">Area / zone<input value="'+escapeHtml(it.location)+'" oninput="updateItem('+i+',\'location\',this.value)" class="field !mt-1 !py-1.5" placeholder="Main panel"></label></div>'+
+   '<div class="grid sm:grid-cols-2 gap-2"><label class="text-[10px] uppercase font-bold text-slate-500">Risk / impact<input value="'+escapeHtml(it.risk||'')+'" oninput="updateItem('+i+',\'risk\',this.value)" class="field !mt-1 !py-1.5" placeholder="Shock hazard, fire risk, service interruption…"></label><label class="text-[10px] uppercase font-bold text-slate-500">Recommendation<input value="'+escapeHtml(it.recommendation||'')+'" oninput="updateItem('+i+',\'recommendation\',this.value)" class="field !mt-1 !py-1.5" placeholder="Corrective action required…"></label></div>'+
+   '<label class="block text-[10px] uppercase font-bold text-slate-500">Field notes <span class="normal-case font-medium text-slate-400">Press Enter for the next bullet</span><textarea onkeydown="handleNotesKey(event,'+i+')" oninput="updateItem('+i+',\'notes\',this.value)" class="field bullet-editor !mt-1 min-h-[110px] resize-y" placeholder="• Observation">'+escapeHtml(it.notes)+'</textarea></label>'+
+   '<div class="flex items-center gap-3"><label class="flex-1"><span class="text-[10px] uppercase font-bold text-slate-500">Photo evidence</span><input type="file" accept="image/*" multiple onchange="addPhotos('+i+',this.files);this.value=\'\'" class="block w-full mt-1 text-[11px] text-slate-500 file:mr-2 file:rounded-lg file:border-0 file:bg-slate-200 file:px-2 file:py-1.5 file:text-[10px] file:font-bold"></label><div class="text-[10px] text-slate-400 shrink-0">Up to 6 · auto-compressed</div></div>'+
+   '<div class="grid grid-cols-2 sm:grid-cols-3 gap-2">'+it.photos.map((p,j)=>'<div class="relative"><div class="absolute top-1 left-1 z-10 px-1.5 py-0.5 rounded bg-slate-950/80 text-white text-[9px] font-bold">Photo '+(j+1)+'</div><img src="'+p.data+'" class="photo-thumb w-full rounded-lg border border-slate-200"><button onclick="removePhoto('+i+','+j+')" class="absolute -top-1 -right-1 w-5 h-5 bg-slate-900 text-white rounded-full text-[10px]">×</button><input value="'+escapeHtml(p.caption||'')+'" oninput="updatePhotoCaption('+i+','+j+',this.value)" class="w-full mt-1 text-[10px] border border-slate-200 rounded-md px-2 py-1" placeholder="Photo caption"></div>').join('')+'</div>'+
+  '</article>'
+ }).join('');
+ lucide.createIcons();
+}
+async function addPhotos(i,files){
+ const item=state.items[i];
+ if(!item)return;
+ item.photos=item.photos||[];
+ const remaining=Math.max(0,6-item.photos.length);
+ const selected=[...files].slice(0,remaining);
+ if(!selected.length){
+  toast('Each finding can contain up to 6 photos.');
+  return;
+ }
+ if(files.length>remaining)toast('Only '+remaining+' more photo'+(remaining===1?' is':'s are')+' allowed for this finding.');
+ for(const file of selected){
+  if(!file?.type?.startsWith('image/')){
+   toast(file?.name+' is not an image file.');
+   continue;
+  }
+  if(file.size>12*1024*1024){
+   toast(file.name+' is too large. Maximum source size is 12 MB.');
+   continue;
+  }
+  try{
+   const compressed=await compressImage(file,1400,.78);
+   const photo={id:makeId()+'-PHOTO',data:compressed,name:file.name,caption:'',addedAt:new Date().toISOString()};
+   if(window.FIELDINSPECT_AUTH_USER&&window.FIELDINSPECT_STORAGE){
+    try{
+     await window.FIELDINSPECT_STORAGE.uploadPhoto(state,photo);
+    }catch(uploadError){
+     console.error('FieldInspect photo cloud upload failed:',uploadError);
+     toast('Photo kept locally because cloud evidence upload failed.');
+    }
+   }
+   item.photos.push(photo);
+  }catch(e){
+   console.error('FieldInspect photo processing failed:',e);
+   toast('Could not process '+file.name);
+  }
+ }
+ renderDefects();
+ persist();
+ renderReport();
+}
+function removePhoto(i,j){
+ const photos=state.items[i]?.photos;if(!photos)return;
+ if(!confirm('Remove this photo?'))return;
+ photos.splice(j,1);renderDefects();persist();renderReport();
+}
+function updatePhotoCaption(i,j,value){
+ const photo=state.items[i]?.photos?.[j];if(!photo)return;
+ photo.caption=value;persist();renderReport();
+}
+function compressImage(file,maxSide=1400,quality=.78){
+ return new Promise((resolve,reject)=>{
+  const url=URL.createObjectURL(file),img=new Image();
+  img.onload=()=>{URL.revokeObjectURL(url);const scale=Math.min(1,maxSide/Math.max(img.naturalWidth,img.naturalHeight));const c=document.createElement('canvas');c.width=Math.max(1,Math.round(img.naturalWidth*scale));c.height=Math.max(1,Math.round(img.naturalHeight*scale));const ctx=c.getContext('2d');ctx.drawImage(img,0,0,c.width,c.height);resolve(c.toDataURL('image/jpeg',quality))};
+  img.onerror=reject;img.src=url;
+ })
+}
+function renderReport(){
+ const t=THEMES[state.theme],s=state.meta;
+ document.documentElement.style.setProperty('--accent',t.hex);document.documentElement.style.setProperty('--accent-rgb',t.rgb);
+ const font=state.font==='mono'?'pdf-font-mono':state.font==='serif'?'pdf-font-serif':'pdf-font-sans';
+ const counts={high:0,medium:0,low:0};state.items.forEach(i=>counts[i.severity]++);
+ const cards=state.items.map((it,i)=>{
+  const sev=it.severity==='high'?['bg-rose-50','text-rose-700','CRITICAL']:it.severity==='medium'?['bg-amber-50','text-amber-700','MONITOR']:['bg-blue-50','text-blue-700','ADVISORY'];
+  const notes=escapeHtml(normalizeBullets(it.notes)).replaceAll('\n','<br>');
+  const photos=(it.photos||[]).slice(0,3).map(p=>'<div><img src="'+p.data+'" class="w-[43mm] h-[43mm] object-cover rounded-lg border border-slate-200">'+(p.caption?'<div class="text-[8px] text-slate-500 mt-1">'+escapeHtml(p.caption)+'</div>':'')+'</div>').join('');
+  return '<div class="defect-card border border-slate-200 rounded-xl overflow-hidden mb-4">'+
+   '<div class="px-4 py-2 flex items-center gap-2 bg-slate-50 border-b border-slate-200"><span class="w-6 h-6 rounded-md text-white text-[10px] font-black flex items-center justify-center theme-bg">'+(i+1)+'</span><span class="font-extrabold text-[12px] flex-1">'+escapeHtml(it.title||'Observation finding')+'</span><span class="px-2 py-1 rounded-full text-[9px] font-extrabold '+sev[0]+' '+sev[1]+'">'+sev[2]+'</span></div>'+
+   '<div class="p-4 grid grid-cols-[48mm_1fr] gap-4"><div>'+(photos||'<div class="w-[43mm] h-[43mm] rounded-lg border border-dashed border-slate-300 bg-slate-50 flex items-center justify-center text-[9px] text-slate-400 text-center">No photo<br>attached</div>')+'<div class="mt-2 text-[9px]"><span class="font-bold text-slate-400 uppercase">Area</span><div class="font-semibold mt-0.5">'+escapeHtml(it.location||'Site general')+'</div></div></div><div><div class="text-[9px] uppercase font-extrabold text-slate-400 mb-1.5">Field observation notes</div><div class="text-[10px] leading-relaxed text-slate-700">'+(notes||'<span class="italic text-slate-400">No notes documented.</span>')+'</div>'+(it.risk?'<div class="mt-3"><div class="text-[8px] uppercase font-extrabold text-rose-500">Risk / impact</div><div class="text-[9px] mt-1 text-slate-700">'+escapeHtml(it.risk)+'</div></div>':'')+(it.recommendation?'<div class="mt-3"><div class="text-[8px] uppercase font-extrabold text-emerald-600">Recommendation</div><div class="text-[9px] mt-1 text-slate-700">'+escapeHtml(it.recommendation)+'</div></div>':'')+'</div></div></div></div>'
+ }).join('');
+ const attachmentHtml='';
+document.getElementById('reportSheet').innerHTML='<div class="'+font+' min-h-[297mm]">'+
+ '<div class="px-[16mm] pt-[14mm] pb-5 text-white theme-bg"><div class="flex justify-between gap-5"><div><div class="text-[8px] uppercase tracking-[.22em] font-bold opacity-75">FieldInspect Pro</div><h1 class="text-[22px] font-black mt-2 leading-tight">'+escapeHtml(s.projectName||'Inspection Report')+'</h1><p class="text-[10px] opacity-80 mt-2">'+escapeHtml(s.siteLocation||'Site location not specified')+'</p></div><div class="text-right"><div class="text-[9px] opacity-70">REPORT ID</div><div class="font-mono font-bold text-[11px] mt-1">'+escapeHtml(s.reportId||'REP-PENDING')+'</div><div class="text-[9px] opacity-70 mt-3">DATE</div><div class="font-bold text-[10px] mt-1">'+escapeHtml(s.inspectionDate||'—')+'</div></div></div></div>'+
+ '<div class="px-[16mm] py-5"><div class="grid grid-cols-4 border border-slate-200 rounded-xl overflow-hidden mb-5"><div class="p-3 bg-slate-50 border-r border-slate-200"><div class="text-[8px] uppercase font-bold text-slate-400">Inspector</div><div class="text-[10px] font-bold mt-1">'+escapeHtml(s.inspectorName||'—')+'</div></div><div class="p-3 bg-slate-50 border-r border-slate-200"><div class="text-[8px] uppercase font-bold text-slate-400">Client</div><div class="text-[10px] font-bold mt-1">'+escapeHtml(s.clientName||'—')+'</div></div><div class="p-3 bg-slate-50 border-r border-slate-200"><div class="text-[8px] uppercase font-bold text-slate-400">Conditions</div><div class="text-[10px] font-bold mt-1">'+escapeHtml(s.conditions||'Standard')+'</div></div><div class="p-3 bg-slate-50"><div class="text-[8px] uppercase font-bold text-slate-400">Status</div><div class="text-[10px] font-bold mt-1">'+escapeHtml(s.overallStatus||'Attention required')+'</div></div></div>'+
+ '<div class="grid grid-cols-3 gap-3 mb-6"><div class="rounded-xl bg-rose-50 p-3 text-center"><div class="text-[18px] font-black text-rose-700">'+counts.high+'</div><div class="text-[8px] font-extrabold text-rose-600 uppercase">High / Critical</div></div><div class="rounded-xl bg-amber-50 p-3 text-center"><div class="text-[18px] font-black text-amber-700">'+counts.medium+'</div><div class="text-[8px] font-extrabold text-amber-600 uppercase">Medium / Monitor</div></div><div class="rounded-xl bg-blue-50 p-3 text-center"><div class="text-[18px] font-black text-blue-700">'+counts.low+'</div><div class="text-[8px] font-extrabold text-blue-600 uppercase">Low / Advisory</div></div></div>'+
+ '<div class="flex items-center gap-3 mb-4"><div class="h-1 w-8 rounded theme-bg"></div><h2 class="text-[13px] font-black uppercase tracking-wider theme-accent">Inspection findings</h2></div>'+
+ (cards||'<div class="border border-dashed border-slate-300 rounded-xl p-8 text-center text-[10px] text-slate-400">No findings recorded.</div>')+
+ attachmentHtml+'<div class="signature-block mt-7 pt-4 border-t-2 border-slate-200"><h2 class="text-[11px] font-black uppercase tracking-wider theme-accent mb-3">Digital signatures & verification</h2><div class="grid grid-cols-2 gap-4"><div class="border border-slate-200 rounded-xl p-3"><div class="text-[8px] uppercase font-bold text-slate-400">Inspector</div>'+(state.signatures.inspector?'<img src="'+state.signatures.inspector+'" class="h-12 max-w-full object-contain mt-1">':'<div class="h-12 flex items-center text-[9px] italic text-slate-400">(Signature pending)</div>')+'<div class="text-[9px] font-semibold mt-1">'+escapeHtml(s.inspectorName||'Inspector')+'</div></div><div class="border border-slate-200 rounded-xl p-3"><div class="text-[8px] uppercase font-bold text-slate-400">Client / recipient</div>'+(state.signatures.client?'<img src="'+state.signatures.client+'" class="h-12 max-w-full object-contain mt-1">':'<div class="h-12 flex items-center text-[9px] italic text-slate-400">(Signature pending)</div>')+'<div class="text-[9px] font-semibold mt-1">'+escapeHtml(s.clientName||'Client')+'</div></div></div></div></div>'+
+ '<div class="px-[16mm] py-3 border-t border-slate-200 flex justify-between text-[7px] text-slate-400"><span>Generated by FieldInspect Pro</span><span>Page-ready A4 report</span></div></div>';
+ fitPreview();
+}
+function fitPreview(){
+ const viewport=document.querySelector('.report-viewport');
+ const scaleWrap=document.getElementById('reportScale');
+ const sheet=document.getElementById('reportSheet');
+ if(!viewport||!scaleWrap||!sheet)return;
+ const available=Math.max(280,viewport.clientWidth-28);
+ const sheetWidth=794;
+ const scale=Math.min(1,available/sheetWidth);
+ scaleWrap.style.width=sheetWidth+'px';
+ scaleWrap.style.transform='scale('+scale+')';
+ scaleWrap.style.transformOrigin='top center';
+ // Transforms do not affect layout. Reserve the real rendered height so the
+ // entire report remains scrollable even when it grows beyond one A4 page.
+ const renderedHeight=Math.max(1123,sheet.scrollHeight||sheet.offsetHeight||1123);
+ scaleWrap.style.height=Math.ceil(renderedHeight*scale+40)+'px';
+}
+function setupSignatures(){
+ setupSig('inspectorSig','inspector');setupSig('clientSig','client');
+}
+function setupSig(id,key){
+ const c=document.getElementById(id);if(!c)return;
+ const ratio=Math.max(1,window.devicePixelRatio||1);c.width=c.clientWidth*ratio;c.height=c.clientHeight*ratio;
+ const ctx=c.getContext('2d');ctx.scale(ratio,ratio);ctx.lineWidth=2;ctx.lineCap='round';ctx.strokeStyle='#0f172a';
+ if(state.signatures[key]){const img=new Image();img.onload=()=>ctx.drawImage(img,0,0,c.clientWidth,c.clientHeight);img.src=state.signatures[key]}
+ const point=e=>{const r=c.getBoundingClientRect();return{x:(e.clientX-r.left),y:(e.clientY-r.top)}};
+ c.onpointerdown=e=>{sigDrawing[id]=true;c.setPointerCapture(e.pointerId);const p=point(e);ctx.beginPath();ctx.moveTo(p.x,p.y)};
+ c.onpointermove=e=>{if(!sigDrawing[id])return;const p=point(e);ctx.lineTo(p.x,p.y);ctx.stroke()};
+ c.onpointerup=()=>{sigDrawing[id]=false;state.signatures[key]=c.toDataURL('image/png');persist();renderReport()};
+ c.onpointercancel=()=>sigDrawing[id]=false;
+}
+function clearSig(id){const c=document.getElementById(id),ctx=c.getContext('2d');ctx.clearRect(0,0,c.width,c.height);const key=id==='inspectorSig'?'inspector':'client';state.signatures[key]='';persist();renderReport()}
+function openPaywall(tab='plans'){document.getElementById('paywall').classList.remove('hidden');document.body.classList.add('overflow-hidden');setTimeout(()=>document.getElementById('activationCode')?.focus(),50)}
+function closePaywall(){document.getElementById('paywall').classList.add('hidden');document.body.classList.remove('overflow-hidden')}
+function selectPlan(plan){selectedPlan=plan;toast((plan==='business'?'Business':'Pro')+' plan selected. Continue with M-Pesa checkout.');document.getElementById('mpesaPhone')?.focus()}
+function normalizePhone(v){let x=String(v||'').replace(/[^0-9]/g,'');if(x.startsWith('0'))x='254'+x.slice(1);return x}
+async function requestMpesa(){ return startPayment(); }
+function activateCode(){
+ const status=document.getElementById('activationStatus');
+ if(status){
+  status.textContent='Manual activation codes are disabled until server-side verification is connected. Use M-Pesa checkout for paid plans.';
+  status.className='text-[10px] mt-2 text-amber-700';
+ }
+}
+async function handlePdf(){
+ const modal=document.getElementById('pdfModal');
+ const status=document.getElementById('pdfStatus'),progress=document.getElementById('pdfProgress');
+ if(!modal||!status||!progress){toast('PDF interface is not available. Refresh the page and try again.');return}
+ modal.classList.remove('hidden');modal.classList.add('flex');
+ try{
+  status.textContent='Checking PDF engine…';progress.style.width='10%';
+  if(!window.jspdf?.jsPDF)throw new Error('PDF engine failed to load. Check your internet connection, then refresh the page.');
+  const {jsPDF}=window.jspdf;
+  status.textContent='Building report pages…';progress.style.width='25%';if(window.FIELDINSPECT_STORAGE?.photoDataUrls&&window.FIELDINSPECT_AUTH_USER)await window.FIELDINSPECT_STORAGE.photoDataUrls(state);await new Promise(r=>setTimeout(r,50));
+  const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4',compress:true});
+  const pageW=210,pageH=297,margin=14,contentW=pageW-margin*2;
+  const t=THEMES[state.theme];
+  let y=margin;
+  const addHeader=(pageNo)=>{
+   if(pageNo>1){doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(100,116,139);doc.text((state.meta.projectName||'Inspection Report').slice(0,75),margin,10);doc.text(state.meta.reportId||'',pageW-margin-28,10);doc.setDrawColor(226,232,240);doc.line(margin,13,pageW-margin,13);y=18;return}
+   doc.setFillColor(...hexRgb(t.hex));doc.roundedRect(margin,y,contentW,38,3,3,'F');doc.setTextColor(255,255,255);doc.setFont('helvetica','bold');doc.setFontSize(7);doc.text('FIELDINSPECT PRO',margin+5,y+7);doc.setFontSize(16);doc.text(doc.splitTextToSize(state.meta.projectName||'Inspection Report',115)[0],margin+5,y+17);doc.setFontSize(7);doc.setFont('helvetica','normal');doc.text(doc.splitTextToSize(state.meta.siteLocation||'Site location not specified',120)[0],margin+5,y+24);doc.setFont('helvetica','bold');doc.text('REPORT ID',pageW-margin-43,y+8);doc.text(state.meta.reportId||'REP-PENDING',pageW-margin-43,y+14);doc.text('DATE',pageW-margin-43,y+22);doc.text(state.meta.inspectionDate||'—',pageW-margin-43,y+28);y+=44;
+   doc.setFillColor(248,250,252);doc.setDrawColor(226,232,240);doc.roundedRect(margin,y,contentW,24,2,2,'FD');const cols=[['INSPECTOR',state.meta.inspectorName],['CLIENT',state.meta.clientName],['CONDITIONS',state.meta.conditions],['STATUS',state.meta.overallStatus]];cols.forEach((c,i)=>{const x=margin+i*(contentW/4);doc.setFont('helvetica','bold');doc.setFontSize(6);doc.setTextColor(100,116,139);doc.text(c[0],x+3,y+6);doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(15,23,42);doc.text(doc.splitTextToSize(c[1]||'—',contentW/4-6)[0],x+3,y+12)});y+=30;
+   const high=state.items.filter(x=>x.severity==='high').length,med=state.items.filter(x=>x.severity==='medium').length,low=state.items.filter(x=>x.severity==='low').length;const cw=contentW/3;[['CRITICAL / HIGH',high,[190,18,60]],['MEDIUM / MONITOR',med,[217,119,6]],['LOW / ADVISORY',low,[37,99,235]]].forEach((c,i)=>{doc.setFillColor(248,250,252);doc.setDrawColor(226,232,240);doc.rect(margin+i*cw,y,cw,16,'FD');doc.setFont('helvetica','bold');doc.setFontSize(11);doc.setTextColor(...c[2]);doc.text(String(c[1]),margin+i*cw+cw/2-2,y+7);doc.setFontSize(6);doc.text(c[0],margin+i*cw+3,y+12)});y+=22;
+   doc.setFont('helvetica','bold');doc.setFontSize(9);doc.setTextColor(...hexRgb(t.hex));doc.text('INSPECTION FINDINGS',margin,y+4);y+=9;
+  };
+  const footer=(n,total)=>{doc.setDrawColor(226,232,240);doc.line(margin,pageH-12,pageW-margin,pageH-12);doc.setFont('helvetica','normal');doc.setFontSize(6.5);doc.setTextColor(148,163,184);doc.text('Generated by FieldInspect Pro',margin,pageH-7);doc.text('Page '+n+' of '+total,pageW-margin-20,pageH-7)};
+  const addPage=()=>{doc.addPage();addHeader(doc.internal.getNumberOfPages())};
+  addHeader(1);
+  progress.style.width='45%';
+  if(!state.items.length){doc.setFillColor(248,250,252);doc.setDrawColor(226,232,240);doc.roundedRect(margin,y,contentW,24,2,2,'FD');doc.setFont('helvetica','italic');doc.setFontSize(8);doc.setTextColor(148,163,184);doc.text('No findings recorded.',margin+5,y+13);y+=30}
+  for(let i=0;i<state.items.length;i++){
+   const item=state.items[i],notes=normalizeBullets(item.notes).split('\n').filter(Boolean);const wrapped=[];doc.setFont('helvetica','normal');doc.setFontSize(8);notes.forEach(n=>wrapped.push(...doc.splitTextToSize(n,118)));const photoSize=44;const bodyH=Math.max(photoSize+7,wrapped.length*4.2+8);const cardH=8+bodyH+5;
+   if(y+cardH>pageH-18){footer(doc.internal.getNumberOfPages(),doc.internal.getNumberOfPages());addPage()}
+   doc.setFillColor(255,255,255);doc.setDrawColor(203,213,225);doc.roundedRect(margin,y,contentW,cardH,2,2,'FD');doc.setFillColor(241,245,249);doc.roundedRect(margin,y,contentW,8,2,2,'F');doc.setFillColor(...hexRgb(t.hex));doc.roundedRect(margin+2,y+1.5,7,5,1,1,'F');doc.setFont('helvetica','bold');doc.setFontSize(7);doc.setTextColor(255,255,255);doc.text(String(i+1),margin+4.4,y+5);doc.setTextColor(15,23,42);doc.setFontSize(8.5);doc.text(doc.splitTextToSize(item.title||'Observation finding',contentW-48)[0],margin+12,y+5.3);
+   const badge=item.severity==='high'?['CRITICAL / HIGH',[254,226,226],[153,27,27]]:item.severity==='medium'?['MEDIUM / MONITOR',[254,243,199],[146,64,14]]:['LOW / ADVISORY',[219,234,254],[30,64,175]];doc.setFillColor(...badge[1]);doc.roundedRect(pageW-margin-35,y+1.5,33,5,1,1,'F');doc.setFontSize(6);doc.setTextColor(...badge[2]);doc.text(badge[0],pageW-margin-32,y+4.8);
+   const by=y+10,photo=item.photos?.[0]?.data;if(photo){try{doc.addImage(photo,'JPEG',margin+3,by,photoSize,photoSize,undefined,'FAST')}catch(e){}if(item.photos?.[0]?.caption){doc.setFont('helvetica','italic');doc.setFontSize(6);doc.setTextColor(100,116,139);doc.text(doc.splitTextToSize(item.photos[0].caption,photoSize)[0],margin+3,by+photoSize+4)}}else{doc.setFillColor(248,250,252);doc.rect(margin+3,by,photoSize,photoSize,'F');doc.setFont('helvetica','italic');doc.setFontSize(7);doc.setTextColor(148,163,184);doc.text('No photo',margin+17,by+23)}
+   doc.setFont('helvetica','bold');doc.setFontSize(6.5);doc.setTextColor(100,116,139);doc.text('AREA / ZONE',margin+3,by+photoSize+3);doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(15,23,42);doc.text(doc.splitTextToSize(item.location||'Site general',photoSize)[0],margin+3,by+photoSize+7);
+   doc.setFont('helvetica','bold');doc.setFontSize(6.5);doc.setTextColor(100,116,139);doc.text('FIELD OBSERVATION NOTES',margin+52,by+2);doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(30,41,59);let ny=by+7;wrapped.forEach(line=>{doc.text(line,margin+52,ny);ny+=4.2});if(!wrapped.length){doc.setFont('helvetica','italic');doc.setFontSize(7);doc.setTextColor(148,163,184);doc.text('No additional notes.',margin+52,ny)}
+   y+=cardH+4;progress.style.width=(45+(i+1)/Math.max(1,state.items.length)*35)+'%';
+  }
+const sigH=31;if(y+sigH>pageH-18){footer(doc.internal.getNumberOfPages(),doc.internal.getNumberOfPages());addPage()}
+  doc.setDrawColor(203,213,225);doc.line(margin,y,pageW-margin,y);y+=5;doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(...hexRgb(t.hex));doc.text('DIGITAL SIGNATURES & VERIFICATION',margin,y+3);y+=7;const sw=contentW/2-4;[['Inspector',state.signatures.inspector,state.meta.inspectorName],['Client / Recipient',state.signatures.client,state.meta.clientName]].forEach((sig,i)=>{const x=margin+i*(sw+8);doc.setFillColor(248,250,252);doc.setDrawColor(226,232,240);doc.roundedRect(x,y,sw,20,1.5,1.5,'FD');doc.setFont('helvetica','bold');doc.setFontSize(6.5);doc.setTextColor(100,116,139);doc.text(sig[0].toUpperCase(),x+3,y+4);if(sig[1]){try{doc.addImage(sig[1],'PNG',x+3,y+5,sw-6,10,undefined,'FAST')}catch(e){}}else{doc.setFont('helvetica','italic');doc.setFontSize(7);doc.text('(Signature pending)',x+20,y+11)}doc.setFont('helvetica','normal');doc.setFontSize(6.5);doc.setTextColor(15,23,42);doc.text(sig[2]||sig[0],x+3,y+17.5)});
+  progress.style.width='92%';status.textContent='Finalizing page numbers…';await new Promise(r=>setTimeout(r,50));
+  const total=doc.internal.getNumberOfPages();for(let p=1;p<=total;p++){doc.setPage(p);footer(p,total)}
+  const safe=(state.meta.projectName||'Inspection_Report').replace(/[^a-z0-9_-]+/gi,'_').slice(0,50);doc.save((state.meta.reportId||'REP')+'_'+safe+'.pdf');
+  progress.style.width='100%';status.textContent='PDF downloaded successfully.';toast('PDF exported successfully.');
+ }catch(e){console.error(e);status.textContent='PDF generation failed: '+e.message;toast('PDF generation failed. Check the browser console for details.')}
+ finally{
+  progress.style.width='100%';
+  setTimeout(()=>{modal.classList.add('hidden');modal.classList.remove('flex')},700)
+ }
+}
+function hexRgb(hex){const n=parseInt(hex.slice(1),16);return[(n>>16)&255,(n>>8)&255,n&255]}
+function mobileTab(tab){
+ const ed=document.getElementById('editorPanel'),pv=document.getElementById('previewPanel');
+ if(tab==='editor'){ed.classList.remove('hidden');pv.classList.add('hidden');document.getElementById('tabEditor').className='py-2 rounded-lg bg-indigo-600 text-white text-xs font-bold';document.getElementById('tabPreview').className='py-2 rounded-lg text-slate-300 text-xs font-bold'}
+ else{ed.classList.add('hidden');pv.classList.remove('hidden');document.getElementById('tabPreview').className='py-2 rounded-lg bg-indigo-600 text-white text-xs font-bold';document.getElementById('tabEditor').className='py-2 rounded-lg text-slate-300 text-xs font-bold';fitPreview()}
+}
+window.addEventListener('DOMContentLoaded',init);
+</script>
+<script>
+(function(){
+ 'use strict';
+ function historyKey(){const u=window.FIELDINSPECT_AUTH_USER||null;return 'fieldinspect-pro-v2:history:'+(u?.id||u?.email||'anonymous')}
+ function trashKey(){const u=window.FIELDINSPECT_AUTH_USER||null;return 'fieldinspect-pro-v2:trash:'+(u?.id||u?.email||'anonymous')}
+ function readHistory(){try{const v=JSON.parse(localStorage.getItem(historyKey())||'[]');return Array.isArray(v)?v:[]}catch(e){return[]}}
+ function writeHistory(v){
+  const key=historyKey();
+  const records=Array.isArray(v)?v.slice(0,100):[];
+  const tryWrite=(list)=>{
+    try{
+      localStorage.setItem(key,JSON.stringify(list));
+      return true;
+    }catch(e){
+      console.error('FieldInspect history write failed:',e);
+      return false;
+    }
+  };
+
+  if(tryWrite(records))return true;
+
+  // Free the duplicated active draft before retrying.
+  try{localStorage.removeItem(STORAGE+':draft')}catch(e){}
+  if(tryWrite(records))return true;
+
+  // If old history consumes the remaining quota, preserve the newest entries.
+  for(let keep=records.length-1;keep>=1;keep--){
+    if(tryWrite(records.slice(0,keep))){
+      toast('Inspection saved. Older history entries were trimmed because browser storage is full.');
+      return true;
+    }
+  }
+
+  // Last-resort compact mode removes only binary evidence from History so the
+  // inspection metadata/findings remain recoverable.
+  const compact=records.map(r=>{
+    const stateCopy=r?.state?JSON.parse(JSON.stringify(r.state)):null;
+    if(stateCopy){
+      stateCopy.attachments=[];
+      if(Array.isArray(stateCopy.items)){
+        stateCopy.items=stateCopy.items.map(item=>({
+          ...item,
+          photos:Array.isArray(item.photos)
+            ? item.photos.map(p=>({caption:p?.caption||'',name:p?.name||'',addedAt:p?.addedAt||''}))
+            : []
+        }));
+      }
+    }
+    return {...r,state:stateCopy,_storageMode:'compact'};
+  });
+  if(tryWrite(compact)){
+    toast('Inspection saved to History. Large photo/document evidence remains in the active draft.');
+    return true;
+  }
+
+  if(records.length&&tryWrite(compact.slice(0,1))){
+    toast('Inspection saved to History. Older history entries were removed because browser storage is full.');
+    return true;
+  }
+
+  toast('Inspection could not be saved. Browser storage is unavailable or full.');
+  return false;
+ }
+ function readTrash(){try{const v=JSON.parse(localStorage.getItem(trashKey())||'[]');return Array.isArray(v)?v:[]}catch(e){return[]}}
+ function writeTrash(v){try{localStorage.setItem(trashKey(),JSON.stringify(v.slice(0,100)));return true}catch(e){toast('Recently deleted could not be saved.');return false}}
+ window.readHistory=readHistory;window.writeHistory=writeHistory;
+ function snapshotState(){return JSON.parse(JSON.stringify(state))}
+ window.saveCurrentToHistory=async function(){
+  try{
+   const list=readHistory(),id=state.meta.reportId||makeId(),idx=list.findIndex(r=>r.reportId===id),created=idx<0;
+   if(!state.meta.storageId)state.meta.storageId=state.meta.reportId||makeId();
+   if(window.FIELDINSPECT_STORAGE&&window.FIELDINSPECT_AUTH_USER)await window.FIELDINSPECT_STORAGE.ensureStored(state);
+   const copy=stateForPersistence(state),now=new Date().toISOString();
+   copy.meta.reportId=id;state.meta.reportId=id;
+   const prev=idx>=0?list[idx]:null;
+   const record={
+    id:prev?.id||(crypto.randomUUID?crypto.randomUUID():'HIST-'+now.replace(/\D/g,'')+'-'+Math.random().toString(36).slice(2,8)),
+    reportId:id,
+    projectName:copy.meta.projectName||'Untitled inspection',
+    clientName:copy.meta.clientName||'',
+    inspectorName:copy.meta.inspectorName||'',
+    siteLocation:copy.meta.siteLocation||'',
+    inspectionDate:copy.meta.inspectionDate||'',
+    overallStatus:copy.meta.overallStatus||'Attention required',
+    status:copy.meta.workflowStatus||prev?.status||'draft',
+    createdAt:prev?.createdAt||now,
+    updatedAt:now,
+    state:copy
+   };
+   const next=list.slice();
+   if(created)next.unshift(record);else next[idx]=record;
+   if(!writeHistory(next))return{saved:false,created};
+   try{persistNow()}catch(e){console.error('FieldInspect post-history draft save failed:',e)}
+   try{renderHistory()}catch(e){console.error('FieldInspect history render failed:',e)}
+   if(created&&!window.FIELDINSPECT_AUTH_USER){try{recordInspectionUsage()}catch(e){console.error('FieldInspect local usage counter failed:',e)}}
+   toast(created?'Inspection saved to history.':'Inspection history updated.');
+   return{saved:true,created,recordId:record.id};
+  }catch(e){
+   console.error('FieldInspect saveCurrentToHistory failed:',e);
+   toast(e?.message||'Inspection could not be saved to History.');
+   return{saved:false,created:false,error:e};
+  }
+ };
+ window.openHistory=function(){document.getElementById('historyModal').classList.remove('hidden');document.body.classList.add('overflow-hidden');renderHistory();setTimeout(()=>document.getElementById('historySearch')?.focus(),50)};
+ window.closeHistory=function(){document.getElementById('historyModal').classList.add('hidden');document.body.classList.remove('overflow-hidden')};
+ window.renderHistory=function(){
+  const list=readHistory(),q=(document.getElementById('historySearch')?.value||'').trim().toLowerCase(),status=document.getElementById('historyStatus')?.value||'',sort=document.getElementById('historySort')?.value||'updated-desc';
+  let rows=list.filter(r=>{const hay=[r.reportId,r.projectName,r.clientName,r.inspectorName,r.siteLocation,r.inspectionDate,r.overallStatus,r.status].join(' ').toLowerCase();return(!q||hay.includes(q))&&(!status||r.status===status)});
+  rows.sort((a,b)=>{if(sort==='name-asc')return String(a.projectName||'').localeCompare(String(b.projectName||''));const aK=sort.startsWith('date')?(a.inspectionDate||''):new Date(a.updatedAt||0).getTime(),bK=sort.startsWith('date')?(b.inspectionDate||''):new Date(b.updatedAt||0).getTime();return sort.endsWith('asc')?String(aK).localeCompare(String(bK)):String(bK).localeCompare(String(aK))});
+  const count=document.getElementById('historyCount');if(count)count.textContent=rows.length+' report'+(rows.length===1?'':'s')+' shown · '+list.length+' saved locally';
+  const el=document.getElementById('historyList');if(!el)return;
+  if(!rows.length){el.innerHTML='<div class="border border-dashed border-slate-300 rounded-2xl p-10 text-center"><i data-lucide="folder-open" class="w-6 h-6 mx-auto text-slate-300"></i><div class="font-extrabold text-sm mt-3">'+(list.length?'No matching inspections':'No inspections saved yet')+'</div><p class="text-xs text-slate-500 mt-1">Use search, filters or save an inspection.</p></div>'}
+  else el.innerHTML=rows.map(r=>{const sc=r.status==='completed'?'bg-emerald-50 text-emerald-700 border-emerald-200':r.status==='in-progress'?'bg-indigo-50 text-indigo-700 border-indigo-200':r.status==='archived'?'bg-slate-100 text-slate-600 border-slate-200':'bg-amber-50 text-amber-700 border-amber-200';const d=r.inspectionDate?new Date(r.inspectionDate+'T00:00:00').toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'}):'No date';return '<div class="rounded-2xl border border-slate-200 p-4 hover:border-indigo-200 hover:shadow-sm transition"><div class="flex flex-col xl:flex-row xl:items-center gap-4"><div class="flex-1 min-w-0"><div class="flex flex-wrap items-center gap-2"><span class="font-mono text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md">'+escapeHtml(r.reportId)+'</span><span class="text-[10px] font-bold border rounded-full px-2 py-1 '+sc+'">'+escapeHtml(r.status||'draft')+'</span><span class="text-[10px] text-slate-400">'+escapeHtml(d)+'</span></div><h3 class="font-extrabold text-sm mt-2 truncate">'+escapeHtml(r.projectName)+'</h3><div class="grid sm:grid-cols-3 gap-x-4 gap-y-1 mt-2 text-[11px] text-slate-500"><span><b class="text-slate-700">Client:</b> '+escapeHtml(r.clientName||'—')+'</span><span><b class="text-slate-700">Inspector:</b> '+escapeHtml(r.inspectorName||'—')+'</span><span><b class="text-slate-700">Location:</b> '+escapeHtml(r.siteLocation||'—')+'</span></div></div><div class="flex flex-wrap gap-2"><button onclick="openHistoryRecord(\''+r.id+'\')" class="px-3 py-2 rounded-lg bg-slate-900 text-white text-xs font-bold">Open & edit</button><button onclick="duplicateHistoryRecord(\''+r.id+'\')" class="px-3 py-2 rounded-lg border border-indigo-200 text-indigo-700 text-xs font-bold">Duplicate</button><button onclick="archiveHistoryRecord(\''+r.id+'\')" class="w-9 h-9 rounded-lg border border-slate-200 text-slate-600 flex items-center justify-center" title="Archive / restore"><i data-lucide="'+(r.status==='archived'?'archive-restore':'archive')+'" class="w-4 h-4"></i></button><button onclick="deleteHistoryRecord(\''+r.id+'\')" class="w-9 h-9 rounded-lg border border-rose-200 text-rose-600 flex items-center justify-center" title="Move to recently deleted"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div></div></div>'}).join('');
+  if(window.lucide?.createIcons)lucide.createIcons();
+ };
+ window.openHistoryRecord=async function(id){
+  const r=readHistory().find(x=>x.id===id);if(!r)return;
+  state=structuredClone(r.state);
+  state.meta.workflowStatus=r.status||'draft';
+  if(!state.meta.storageId)state.meta.storageId=state.meta.reportId||makeId();
+  persistNow();bindFields();renderDefects();
+  if(typeof applyTheme==='function')applyTheme();
+  try{if(window.FIELDINSPECT_STORAGE?.hydrate)await window.FIELDINSPECT_STORAGE.hydrate(state)}catch(e){console.error('FieldInspect evidence hydration failed:',e)}
+  renderDefects();renderReport();
+  if(typeof setupSignatures==='function')setTimeout(setupSignatures,0);
+  closeHistory();toast('Loaded '+state.meta.reportId+' for editing.')
+};
+window.duplicateHistoryRecord=async function(id){
+ const r=readHistory().find(x=>x.id===id);
+ if(!r)return;
+ const source=structuredClone(r.state||{});
+ state=structuredClone(source);
+ state.meta=state.meta||{};
+ state.meta.reportId=makeId();
+ state.meta.storageId=makeId();
+ state.meta.projectName=(state.meta.projectName||'Inspection')+' — Copy';
+ state.meta.workflowStatus='draft';
+ try{if(window.FIELDINSPECT_STORAGE?.cloneEvidence)await window.FIELDINSPECT_STORAGE.cloneEvidence(source,state)}
+ catch(e){console.error('FieldInspect evidence clone failed:',e);toast('Inspection was not duplicated because its cloud evidence could not be copied.');return}
+ persistNow();bindFields();renderDefects();
+ try{if(window.FIELDINSPECT_STORAGE?.hydrate)await window.FIELDINSPECT_STORAGE.hydrate(state)}catch(e){}
+ renderReport();
+ const saved=await window.saveCurrentToHistory?.();
+ if(!saved?.saved){toast('Inspection was duplicated locally, but could not be saved to History. Check browser storage or your inspection allowance.');return}
+ closeHistory();toast('Inspection duplicated and saved as a new draft.');
+};
+
+ window.archiveHistoryRecord=function(id){const list=readHistory(),i=list.findIndex(x=>x.id===id);if(i<0)return;list[i].status=list[i].status==='archived'?'draft':'archived';list[i].state.meta.workflowStatus=list[i].status;list[i].updatedAt=new Date().toISOString();if(writeHistory(list)){renderHistory();toast(list[i].status==='archived'?'Inspection archived.':'Inspection restored.');if(window.FIELDINSPECT_AUTH_USER&&window.FIELDINSPECT_SYNC_INSPECTIONS)window.FIELDINSPECT_SYNC_INSPECTIONS().catch(e=>console.error('FieldInspect archive cloud sync failed:',e))}};
+ window.deleteHistoryRecord=function(id){
+ const list=readHistory(),i=list.findIndex(x=>x.id===id);if(i<0||!confirm('Move this inspection to Recently Deleted?'))return;
+ const r=list[i],next=list.filter(x=>x.id!==id);
+ if(!writeHistory(next))return;
+ r.deletedAt=new Date().toISOString();
+ const trash=readTrash();trash.unshift(r);
+ if(!writeTrash(trash)){toast('The inspection was removed from History, but Recently Deleted could not be updated.');return}
+ renderHistory();toast('Inspection moved to Recently Deleted.');
+};
+
+ window.openTrash=function(){document.getElementById('trashModal').classList.remove('hidden');document.body.classList.add('overflow-hidden');renderTrash()};
+ window.closeTrash=function(){document.getElementById('trashModal').classList.add('hidden');document.body.classList.remove('overflow-hidden')};
+ window.renderTrash=function(){
+ const list=readTrash(),el=document.getElementById('trashList'),btn=document.getElementById('purgeAllTrashBtn');if(!el)return;
+ if(btn){btn.disabled=!list.length;btn.classList.toggle('opacity-40',!list.length);btn.classList.toggle('cursor-not-allowed',!list.length)}
+ if(!list.length){el.innerHTML='<div class="border border-dashed border-slate-300 rounded-2xl p-8 text-center text-xs text-slate-500">Recently deleted is empty.</div>';return}
+ el.innerHTML=list.map(r=>'<div class="rounded-xl border border-slate-200 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"><div><div class="font-extrabold text-sm">'+escapeHtml(r.projectName||'Untitled inspection')+'</div><div class="text-[10px] text-slate-500 mt-1">'+escapeHtml(r.reportId||'')+' · deleted '+escapeHtml(r.deletedAt?new Date(r.deletedAt).toLocaleString():'')+'</div></div><div class="flex gap-2"><button onclick="restoreDeleted(\''+r.id+'\')" class="px-3 py-2 rounded-lg bg-slate-900 text-white text-xs font-bold">Restore</button><button onclick="purgeDeleted(\''+r.id+'\')" class="px-3 py-2 rounded-lg border border-rose-200 text-rose-600 text-xs font-bold">Delete permanently</button></div></div>').join('');
+};
+
+ window.restoreDeleted=function(id){const trash=readTrash(),i=trash.findIndex(x=>x.id===id);if(i<0)return;const r=trash[i];if(readHistory().some(x=>x.reportId===r.reportId)){toast('A current inspection already uses this report ID.');return}delete r.deletedAt;const list=readHistory();list.unshift(r);if(!writeHistory(list))return;trash.splice(i,1);if(!writeTrash(trash)){toast('Inspection restored locally, but Recently Deleted could not be updated.');return}renderTrash();renderHistory();toast('Inspection restored.');if(window.FIELDINSPECT_AUTH_USER&&window.FIELDINSPECT_SYNC_INSPECTIONS){window.FIELDINSPECT_SYNC_INSPECTIONS().then(result=>{if(result.ok)toast('Inspection restored and synced to cloud.');else toast('Inspection restored locally. Cloud sync will retry when available.')}).catch(error=>console.error('FieldInspect restore cloud sync failed:',error))}};
+ window.purgeDeleted=async function(id){
+ const trash=readTrash(),i=trash.findIndex(x=>x.id===id);if(i<0)return;
+ if(!confirm('Permanently delete this inspection? This cannot be undone.'))return;
+ const r=trash[i];
+ try{
+  if(window.FIELDINSPECT_AUTH_USER){
+   if(typeof window.FIELDINSPECT_DELETE_CLOUD_INSPECTION!=='function')throw new Error('Cloud deletion service is unavailable.');
+   await window.FIELDINSPECT_DELETE_CLOUD_INSPECTION(r.id);
+   if(window.FIELDINSPECT_STORAGE?.deleteInspectionEvidence&&r?.state?.meta?.storageId)await window.FIELDINSPECT_STORAGE.deleteInspectionEvidence(r.state.meta.storageId);
+  }
+ }catch(e){
+  console.error('FieldInspect permanent cloud deletion failed:',e);
+  toast('Cloud cleanup failed. The inspection remains in Recently Deleted so nothing is lost.');
+  return;
+ }
+ trash.splice(i,1);
+ if(writeTrash(trash)){renderTrash();toast('Inspection permanently deleted.')}
+};
+
+window.purgeAllDeleted=async function(){
+ const trash=readTrash();if(!trash.length){toast('Recently Deleted is already empty.');return}
+ if(!confirm('Permanently delete all recently deleted inspections? This cannot be undone.'))return;
+ const btn=document.getElementById('purgeAllTrashBtn');if(btn)btn.disabled=true;
+ try{
+  if(window.FIELDINSPECT_AUTH_USER&&window.FIELDINSPECT_PURGE_CLOUD_DELETED){
+   const result=await window.FIELDINSPECT_PURGE_CLOUD_DELETED(trash);
+   const failedIds=new Set((result?.failed||[]).map(x=>x.id));
+   const remaining=trash.filter(r=>failedIds.has(r.id));
+   if(!writeTrash(remaining))return;
+   renderTrash();
+   const deleted=trash.length-remaining.length;
+   if(remaining.length)toast(deleted+' permanently deleted. '+remaining.length+' kept in Recently Deleted because cloud cleanup failed.');
+   else toast(trash.length+' recently deleted inspection(s) permanently removed.');
+  }else{
+   if(window.FIELDINSPECT_AUTH_USER){
+    toast('Cloud deletion service is not available. Nothing was removed from Recently Deleted.');
+    return;
+   }
+   if(writeTrash([])){renderTrash();toast(trash.length+' recently deleted inspection(s) permanently removed.')}
+  }
+ }finally{if(btn)btn.disabled=false}
+};
+ window.addEventListener('DOMContentLoaded',()=>{if(window.lucide?.createIcons)lucide.createIcons()});
+})();
+</script>
+
+<script type="module">
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/+esm';
+
+const cfg = window.FIELDINSPECT_AUTH || {};
+const supabaseReady = Boolean(cfg.SUPABASE_URL && cfg.SUPABASE_PUBLISHABLE_KEY);
+const supabase = supabaseReady ? createClient(cfg.SUPABASE_URL, cfg.SUPABASE_PUBLISHABLE_KEY) : null;
+window.FIELDINSPECT_SUPABASE = supabase;
 let authUser = null;
 let authMode = 'login';
 
@@ -296,7 +1165,7 @@ window.showAuthMode=function(mode){
   authMessage('', 'success'); document.getElementById('authMessage').classList.add('hidden');
 };
 window.submitAuth=async function(){
-  if(!supabaseClient){document.getElementById('authSetup').classList.remove('hidden');return}
+  if(!supabase){document.getElementById('authSetup').classList.remove('hidden');return}
   const email=document.getElementById('authEmail').value.trim();
   const password=document.getElementById('authPassword').value;
   if(!email||!password){authMessage('Enter your email and password.');return}
@@ -306,23 +1175,23 @@ window.submitAuth=async function(){
     if(authMode==='signup'){
       const name=document.getElementById('authName').value.trim();
       if(!name){authMessage('Enter your full name.');return}
-      const {data,error}=await supabaseClient.auth.signUp({email,password,options:{data:{full_name:name},emailRedirectTo:authRedirectUrl()||undefined}});
+      const {data,error}=await supabase.auth.signUp({email,password,options:{data:{full_name:name},emailRedirectTo:authRedirectUrl()||undefined}});
       if(error)throw error;
       if(data.session){
-        authUser=data.session.user; window.FIELDINSPECT_AUTH_USER=authUser; 
+        authUser=data.session.user; window.FIELDINSPECT_AUTH_USER=authUser; subscription=loadSubscription(); updatePlanUI();
         authMessage('Account created successfully.','success');
         closeAuth();
       }else{
         authMessage('Account created. Check your email to confirm your address.','success');
       }
     }else{
-      const {data,error}=await supabaseClient.auth.signInWithPassword({email,password});
+      const {data,error}=await supabase.auth.signInWithPassword({email,password});
       if(error)throw error;
       authUser=data.user;
       window.FIELDINSPECT_AUTH_USER=authUser;
-      
+      subscription=loadSubscription();
       updateAuthUI();
-      
+      updatePlanUI();
       
       closeAuth();
       toast('Signed in successfully.');
@@ -331,51 +1200,49 @@ window.submitAuth=async function(){
   finally{submit.disabled=false;submit.textContent=authMode==='signup'?'Create account':'Sign in'}
 };
 window.startPasswordReset=async function(){
-  if(!supabaseClient){document.getElementById('authSetup').classList.remove('hidden');return}
+  if(!supabase){document.getElementById('authSetup').classList.remove('hidden');return}
   const email=document.getElementById('authEmail').value.trim();
   if(!email){authMessage('Enter your email first, then choose Forgot password.');return}
   try{
-    const {error}=await supabaseClient.auth.resetPasswordForEmail(email,{redirectTo:authRedirectUrl()});
+    const {error}=await supabase.auth.resetPasswordForEmail(email,{redirectTo:authRedirectUrl()});
     if(error)throw error;
     authMessage('Password reset instructions have been sent to your email.','success');
   }catch(e){authMessage(e.message||'Could not send reset email.')}
 };
 window.finishPasswordReset=async function(){
-  if(!supabaseClient){resetMessage('Authentication is not configured yet.');return}
+  if(!supabase){resetMessage('Authentication is not configured yet.');return}
   const password=document.getElementById('resetPassword').value;
   const confirm=document.getElementById('resetConfirm').value;
   if(password.length<8){resetMessage('Password must be at least 8 characters.');return}
   if(password!==confirm){resetMessage('Passwords do not match.');return}
   try{
-    const {error}=await supabaseClient.auth.updateUser({password});
+    const {error}=await supabase.auth.updateUser({password});
     if(error)throw error;
     resetMessage('Password updated successfully. You can now sign in.','success');
     setTimeout(()=>{document.getElementById('resetModal').classList.add('hidden');openAuth('login')},900);
   }catch(e){resetMessage(e.message||'Could not update password.')}
 };
 window.saveProfile=async function(){
-  if(!supabaseClient||!authUser)return;
+  if(!supabase||!authUser)return;
   const name=document.getElementById('profileName').value.trim();
   if(!name){authMessage('Enter your full name.');return}
-  const {data,error}=await supabaseClient.auth.updateUser({data:{full_name:name}});
+  const {data,error}=await supabase.auth.updateUser({data:{full_name:name}});
   if(error){authMessage(error.message);return}
   authUser=data.user; authMessage('Profile updated.','success'); toast('Profile updated.');
 };
 window.signOutUser=async function(){
-  if(!supabaseClient)return;
-  const {error}=await supabaseClient.auth.signOut();
+  if(!supabase)return;
+  const {error}=await supabase.auth.signOut();
   if(error){authMessage(error.message);return}
-  authUser=null; window.FIELDINSPECT_AUTH_USER=null; closeAuth(); updateAuthUI(); toast('Signed out.');
+  authUser=null; window.FIELDINSPECT_AUTH_USER=null; subscription=loadSubscription(); closeAuth(); updateAuthUI(); updatePlanUI(); toast('Signed out.');
 };
-
-
 window.addEventListener('DOMContentLoaded',async()=>{
   document.getElementById('authSetup')?.classList.toggle('hidden',supabaseReady);
-  if(!supabaseClient){updateAuthUI();return}
-  const {data}=await supabaseClient.auth.getSession();
-  authUser=data.session?.user||null; window.FIELDINSPECT_AUTH_USER=authUser; updateAuthUI(); 
-  supabaseClient.auth.onAuthStateChange((_event,session)=>{
-    authUser=session?.user||null; window.FIELDINSPECT_AUTH_USER=authUser; updateAuthUI(); 
+  if(!supabase){updateAuthUI();return}
+  const {data}=await supabase.auth.getSession();
+  authUser=data.session?.user||null; window.FIELDINSPECT_AUTH_USER=authUser; subscription=loadSubscription(); updateAuthUI(); updatePlanUI(); 
+  supabase.auth.onAuthStateChange((_event,session)=>{
+    authUser=session?.user||null; window.FIELDINSPECT_AUTH_USER=authUser; subscription=loadSubscription(); updateAuthUI(); updatePlanUI(); 
   });
   const recovery=location.hash.includes('type=recovery');
   if(recovery){
