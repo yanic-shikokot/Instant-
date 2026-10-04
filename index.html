@@ -129,7 +129,7 @@ if (!window.FIELDINSPECT_AUTH?.SUPABASE_URL || !window.FIELDINSPECT_AUTH?.SUPABA
  <div class="max-w-[1920px] mx-auto w-full px-3 sm:px-5 py-2 flex items-center justify-between gap-3">
   <div class="flex items-center gap-2.5 min-w-0"><div class="w-8 h-8 rounded-lg flex items-center justify-center shadow-sm shrink-0" style="background:var(--accent);color:#fff"><i data-lucide="clipboard-check" class="w-4 h-4"></i></div><div class="min-w-0"><div class="font-extrabold tracking-tight text-sm leading-none">FieldInspect <span style="color:var(--accent)">Pro</span></div><div class="text-[9px] text-slate-400 mt-1 hidden sm:block">Professional inspection reporting</div></div></div>
   <div class="flex items-center gap-1.5 shrink-0">
-   <button onclick="newInspection()" class="icon-action" title="New inspection" aria-label="New inspection"><i data-lucide="plus"></i><span>New</span></button><button onclick="window.saveCurrentToHistory?.()" class="icon-action primary" title="Save current inspection" aria-label="Save current inspection"><i data-lucide="save"></i><span>Save</span></button><button onclick="openHistory()" class="icon-action" title="History" aria-label="History"><i data-lucide="history"></i><span class="hidden sm:inline">History</span></button><button onclick="window.FIELDINSPECT_SYNC_NOW?.()" class="icon-action" title="Cloud sync" aria-label="Cloud sync"><i data-lucide="cloud"></i><span class="hidden lg:inline">Sync</span></button><button id="uiThemeButton" onclick="toggleUiTheme()" class="icon-action ui-theme-toggle" title="Dark mode" aria-label="Toggle dark mode"><i data-lucide="moon"></i></button><button id="accountButton" onclick="openAuth()" class="icon-action" title="Account" aria-label="Account"><i data-lucide="user-round"></i><span class="hidden lg:inline">Account</span></button><button onclick="handlePdf()" class="pdf-action" title="Download PDF"><i data-lucide="file-down"></i><span class="hidden sm:inline">PDF</span></button>
+   <button onclick="newInspection()" class="icon-action" title="New inspection" aria-label="New inspection"><i data-lucide="plus"></i><span>New</span></button><button onclick="window.saveCurrentToHistory?.()" class="icon-action primary" title="Save current inspection" aria-label="Save current inspection"><i data-lucide="save"></i><span>Save</span></button><button onclick="openHistory()" class="icon-action" title="History" aria-label="History"><i data-lucide="history"></i><span class="hidden sm:inline">History</span></button><button onclick="window.FIELDINSPECT_SYNC_NOW?.()" class="icon-action" title="Cloud sync" aria-label="Cloud sync"><i data-lucide="cloud"></i><span class="hidden lg:inline">Sync</span></button><button id="uiThemeButton" onclick="toggleUiTheme()" class="icon-action ui-theme-toggle" title="Dark mode" aria-label="Toggle dark mode"><i data-lucide="moon"></i></button><button id="accountButton" onclick="openAuth()" class="icon-action" title="Account" aria-label="Account"><i data-lucide="user-round"></i><span class="hidden lg:inline">Account</span></button><button onclick="exportCsv()" class="icon-action" title="Export current inspection as CSV" aria-label="Export current inspection as CSV"><i data-lucide="table-2"></i><span class="hidden sm:inline">CSV</span></button><button onclick="handlePdf()" class="pdf-action" title="Download PDF"><i data-lucide="file-down"></i><span class="hidden sm:inline">PDF</span></button>
   </div>
  </div>
 </header>
@@ -777,7 +777,8 @@ async function addPhotos(i,files){
   }
   try{
    const compressed=await compressImage(file,1400,.78);
-   const photo={id:makeId()+'-PHOTO',data:compressed,name:file.name,caption:'',addedAt:new Date().toISOString()};
+   const watermarked=await applyPhotoWatermark(compressed,{reportId:state.meta.reportId,projectName:state.meta.projectName});
+   const photo={id:makeId()+'-PHOTO',data:watermarked,name:file.name,caption:'',addedAt:new Date().toISOString(),watermarkText:(state.meta.reportId||state.meta.projectName||'').trim()};
    if(window.FIELDINSPECT_AUTH_USER&&window.FIELDINSPECT_STORAGE){
     try{
      await window.FIELDINSPECT_STORAGE.uploadPhoto(state,photo);
@@ -810,6 +811,44 @@ function compressImage(file,maxSide=1400,quality=.78){
   const url=URL.createObjectURL(file),img=new Image();
   img.onload=()=>{URL.revokeObjectURL(url);const scale=Math.min(1,maxSide/Math.max(img.naturalWidth,img.naturalHeight));const c=document.createElement('canvas');c.width=Math.max(1,Math.round(img.naturalWidth*scale));c.height=Math.max(1,Math.round(img.naturalHeight*scale));const ctx=c.getContext('2d');ctx.drawImage(img,0,0,c.width,c.height);resolve(c.toDataURL('image/jpeg',quality))};
   img.onerror=reject;img.src=url;
+ })
+}
+function applyPhotoWatermark(dataUrl,{reportId='',projectName=''}={}){
+ return new Promise((resolve,reject)=>{
+  const img=new Image();
+  img.onload=()=>{
+   try{
+    const canvas=document.createElement('canvas');
+    canvas.width=img.naturalWidth||img.width;
+    canvas.height=img.naturalHeight||img.height;
+    const ctx=canvas.getContext('2d');
+    if(!ctx)throw new Error('Canvas context unavailable');
+    ctx.drawImage(img,0,0,canvas.width,canvas.height);
+    const primary=(reportId||projectName||'FIELDINSPECT').trim();
+    const secondary=projectName&&reportId&&projectName.trim()!==reportId.trim()?projectName.trim():'';
+    const shortSecondary=secondary.length>54?secondary.slice(0,51)+'…':secondary;
+    const text=shortSecondary?primary+' · '+shortSecondary:primary;
+    const size=Math.max(14,Math.round(Math.min(canvas.width,canvas.height)*0.028));
+    const pad=Math.max(10,Math.round(size*.7));
+    const x=canvas.width-pad,y=canvas.height-pad;
+    ctx.save();
+    ctx.globalAlpha=.16;
+    ctx.fillStyle='rgba(15,23,42,.22)';
+    ctx.font='700 '+size+'px Inter, Arial, sans-serif';
+    ctx.textAlign='right';
+    ctx.textBaseline='bottom';
+    const metrics=ctx.measureText(text);
+    const boxW=metrics.width+pad*1.25,boxH=size+pad*.65;
+    ctx.fillRect(x-boxW,y-boxH,boxW,boxH);
+    ctx.globalAlpha=.42;
+    ctx.fillStyle='#ffffff';
+    ctx.fillText(text,x-pad*.55,y-pad*.28);
+    ctx.restore();
+    resolve(canvas.toDataURL('image/jpeg',.86));
+   }catch(error){reject(error)}
+  };
+  img.onerror=reject;
+  img.src=dataUrl;
  })
 }
 async function ensurePhotoWatermarks(){
@@ -947,6 +986,41 @@ const sigH=31;if(y+sigH>pageH-18){footer(doc.internal.getNumberOfPages(),doc.int
  finally{
   progress.style.width='100%';
   setTimeout(()=>{modal.classList.add('hidden');modal.classList.remove('flex')},700)
+ }
+}
+function csvCell(value){
+ let s=String(value??'');
+ if(/^[=+\\-@]/.test(s))s="'"+s;
+ return '"'+s.replace(/"/g,'""')+'"';
+}
+function exportCsv(){
+ try{
+  const m=state.meta||{};
+  const items=Array.isArray(state.items)?state.items:[];
+  const exportedAt=new Date().toISOString();
+  const columns=['report_id','project_name','inspection_date','inspector','client','site_location','conditions','overall_status','workflow_status','finding_number','finding_title','severity','area_zone','risk_impact','recommendation','field_notes','photo_count','photo_ids','photo_names','photo_captions','exported_at'];
+  const rows=[columns.map(csvCell).join(',')];
+  const base=[m.reportId,m.projectName,m.inspectionDate,m.inspectorName,m.clientName,m.siteLocation,m.conditions,m.overallStatus,m.workflowStatus];
+  if(!items.length){
+   rows.push(base.concat(['','','','','','','','','','','',exportedAt]).map(csvCell).join(','));
+  }else{
+   items.forEach((item,index)=>{
+    const photos=Array.isArray(item.photos)?item.photos:[];
+    rows.push(base.concat([index+1,item.title||'',item.severity||'',item.location||'',item.risk||'',item.recommendation||'',normalizeBullets(item.notes||''),photos.length,photos.map(p=>p.id||'').join(' | '),photos.map(p=>p.name||'').join(' | '),photos.map(p=>p.caption||'').join(' | '),exportedAt]).map(csvCell).join(','));
+   });
+  }
+  const csv='\\uFEFF'+rows.join('\\r\\n');
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  const safe=(m.projectName||'Inspection_Report').replace(/[^a-z0-9_-]+/gi,'_').slice(0,50)||'Inspection_Report';
+  a.href=url;a.download=(m.reportId||'REP')+'_'+safe+'_findings.csv';
+  document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+  toast('CSV exported successfully.');
+ }catch(error){
+  console.error('FieldInspect CSV export failed:',error);
+  toast('CSV export failed. Please try again.');
  }
 }
 function hexRgb(hex){const n=parseInt(hex.slice(1),16);return[(n>>16)&255,(n>>8)&255,n&255]}
