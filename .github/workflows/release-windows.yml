@@ -60,7 +60,7 @@ jobs:
         shell: pwsh
         run: |
           $files = Get-ChildItem -Recurse -File -Include *.js,*.cjs,*.jsx,*.ts,*.tsx,*.html,*.json | Where-Object { $_.FullName -notmatch '\\(node_modules|dist|release)\\' }
-          $bad = $files | Select-String -Pattern '@Supabase/supabase-js|@supabase/Supabase-js|@SUPABASE/supabase-js|@SUPABASE/SUPABASE-JS'
+          $bad = $files | Select-String -CaseSensitive -Pattern '@Supabase/supabase-js|@supabase/Supabase-js|@SUPABASE/supabase-js|@SUPABASE/SUPABASE-JS'
           if ($bad) { $bad | Format-List; throw "SOURCE AUDIT FAILURE: invalid Supabase package capitalization found." }
           $jsonFiles = $files | Where-Object { $_.Extension -eq '.json' }
           foreach ($file in $jsonFiles) { Get-Content $file.FullName -Raw | ConvertFrom-Json | Out-Null }
