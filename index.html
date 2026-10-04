@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>FieldInspect Pro — Field Inspection Reports</title>
-<meta name="description" content="Commercial field inspection reporting SaaS with photo evidence, branded PDF reports, team plans and M-Pesa activation.">
+<meta name="description" content="Commercial field inspection reporting and A4 PDF reporting platform.">
 <script src="https://cdn.tailwindcss.com"></script>
 <script>
 tailwind.config={theme:{extend:{fontFamily:{sans:['Inter','ui-sans-serif','system-ui'],mono:['JetBrains Mono','ui-monospace','monospace'],serif:['Lora','Georgia','serif']}}}};
@@ -191,14 +191,6 @@ if (!window.FIELDINSPECT_AUTH?.SUPABASE_URL || !window.FIELDINSPECT_AUTH?.SUPABA
 <script>
 'use strict';
 
-/* FieldInspect Pro — single-file application configuration.
-   A real STK push requires a server endpoint. Set this value in production:
-   window.FIELDINSPECT_CONFIG={MPESA_STK_ENDPOINT:'/api/mpesa/stkpush'}
-*/
-window.FIELDINSPECT_CONFIG=window.FIELDINSPECT_CONFIG||{};
-window.FIELDINSPECT_CONFIG.MPESA_STK_ENDPOINT=window.FIELDINSPECT_CONFIG.MPESA_STK_ENDPOINT||
-  ((window.FIELDINSPECT_AUTH?.SUPABASE_FUNCTIONS_URL||'')+'/mpesa-stk-push');
-
 const STORAGE='fieldinspect-pro-v2';
 const THEMES={
  violet:{name:'Indigo',hex:'#4f46e5',rgb:'79,70,229'},
@@ -216,8 +208,6 @@ const DEFAULT_STATE={
  attachments:[]
 };
 let state=loadState();
-let 
-let selectedPlan='business';
 let saveTimer=null;
 let sigDrawing={inspectorSig:false,clientSig:false};
 
@@ -270,7 +260,7 @@ function persist(){
 function persistNow(){
  clearTimeout(saveTimer);
  try{
-  localStorage.setItem(STORAGE+':draft',JSON.stringify(state));
+  localStorage.setItem(STORAGE+':draft',JSON.stringify(stateForPersistence(state)));
   setSaveStatus('Saved');
   return true;
  }catch(e){
@@ -432,8 +422,9 @@ async function newInspection(){
    },
    items:[],
    attachments:[],
-   signatures:{inspectorSig:'',clientSig:''},
-   theme:{accent:'#4f46e5',font:'sans',template:'residential'}
+   signatures:{inspector:'',client:''},
+   theme:'violet',
+   font:'sans'
   };
  }
 
@@ -793,7 +784,6 @@ window.addEventListener('DOMContentLoaded',init);
    if(!writeHistory(next))return{saved:false,created};
    try{persistNow()}catch(e){console.error('FieldInspect post-history draft save failed:',e)}
    try{renderHistory()}catch(e){console.error('FieldInspect history render failed:',e)}
-   if(created&&!window.FIELDINSPECT_AUTH_USER){try{recordInspectionUsage()}catch(e){console.error('FieldInspect local usage counter failed:',e)}}
    toast(created?'Inspection saved to history.':'Inspection history updated.');
    return{saved:true,created,recordId:record.id};
   }catch(e){
@@ -842,7 +832,7 @@ window.duplicateHistoryRecord=async function(id){
  try{if(window.FIELDINSPECT_STORAGE?.hydrate)await window.FIELDINSPECT_STORAGE.hydrate(state)}catch(e){}
  renderReport();
  const saved=await window.saveCurrentToHistory?.();
- if(!saved?.saved){toast('Inspection was duplicated locally, but could not be saved to History. Check browser storage or your inspection allowance.');return}
+ if(!saved?.saved){toast('Inspection was duplicated locally, but could not be saved to History. Check browser storage.');return}
  closeHistory();toast('Inspection duplicated and saved as a new draft.');
 };
 
