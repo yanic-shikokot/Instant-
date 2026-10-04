@@ -416,13 +416,13 @@ async function init(){
  if(!state.meta.storageId)state.meta.storageId=state.meta.reportId;
  if(!state.meta.inspectionDate)state.meta.inspectionDate=today();
  bindFields();renderThemes();renderDefects();renderReport();setupSignatures();if(window.lucide?.createIcons)window.lucide.createIcons();
- if(window.FIELDINSPECT_STORAGE?.hydrate){try{await window.FIELDINSPECT_STORAGE.hydrate(state);renderDefects();renderReport()}catch(e){console.error('FieldInspect evidence hydration failed:',e)}}
+ if(window.FIELDINSPECT_STORAGE?.hydrate){try{await window.FIELDINSPECT_STORAGE.hydrate(state);await ensurePhotoWatermarks();renderDefects();renderReport()}catch(e){console.error('FieldInspect evidence hydration failed:',e)}}
  if(window.FIELDINSPECT_STORAGE?.loadActiveState){
   try{
    const idbState=await window.FIELDINSPECT_STORAGE.loadActiveState();
    if(idbState && (!state.items?.length && Array.isArray(idbState.items) && idbState.items.length)){
     state={...structuredClone(DEFAULT_STATE),...idbState};
-    bindFields();renderThemes();renderDefects();renderReport();
+    bindFields();renderThemes();await ensurePhotoWatermarks();renderDefects();renderReport();
    }
   }catch(e){console.warn('FieldInspect IndexedDB draft restore note:',e)}
  }
@@ -811,6 +811,21 @@ function compressImage(file,maxSide=1400,quality=.78){
   img.onload=()=>{URL.revokeObjectURL(url);const scale=Math.min(1,maxSide/Math.max(img.naturalWidth,img.naturalHeight));const c=document.createElement('canvas');c.width=Math.max(1,Math.round(img.naturalWidth*scale));c.height=Math.max(1,Math.round(img.naturalHeight*scale));const ctx=c.getContext('2d');ctx.drawImage(img,0,0,c.width,c.height);resolve(c.toDataURL('image/jpeg',quality))};
   img.onerror=reject;img.src=url;
  })
+}
+async function ensurePhotoWatermarks(){
+ const items=Array.isArray(state.items)?state.items:[];
+ for(const item of items){
+  const photos=Array.isArray(item.photos)?item.photos:[];
+  for(const photo of photos){
+   if(!photo?.data||photo.watermarkText)continue;
+   try{
+    photo.data=await applyPhotoWatermark(photo.data,{reportId:state.meta.reportId,projectName:state.meta.projectName});
+    photo.watermarkText=(state.meta.reportId||state.meta.projectName||'').trim();
+   }catch(error){
+    console.warn('FieldInspect photo watermark migration failed:',error);
+   }
+  }
+ }
 }
 function renderReport(){
  const t=THEMES[state.theme],s=state.meta;
@@ -1339,5 +1354,5 @@ window.addEventListener('DOMContentLoaded',async()=>{
 <script type="module" src="./storage-sync.js"></script>
 <script type="module" src="./cloud-sync.js"></script>
 </body>
-<!-- FieldInspect release marker: v1.6.20 preview/header UI update. 2026-10-04 -->
+<!-- FieldInspect release marker: v1.6.24 evidence watermark + CSV export. 2026-10-05 -->
 </html>
