@@ -36,7 +36,7 @@ button{cursor:pointer}
 .workspace-editor{flex:1 1 50%;width:50%;min-width:0;min-height:0;height:100%;overflow-y:auto;background:#fff;border-right:1px solid #e2e8f0}
 .workspace-preview{flex:1 1 50%;width:50%;min-width:0;min-height:0;height:100%;display:flex;flex-direction:column;overflow:hidden;background:#f8fafc}
 .workspace-preview-inner{display:flex;flex:1 1 auto;min-width:0;min-height:0;width:100%;height:100%;flex-direction:column}
-.report-viewport{width:100%;min-width:0;min-height:0;flex:1 1 auto;height:100%;overflow-y:auto;overflow-x:hidden;padding:18px 14px 40px}
+.report-viewport{width:100%;min-width:0;min-height:0;flex:1 1 auto;height:100%;overflow:auto;padding:18px 14px 40px;scroll-behavior:smooth}
 .report-scale{width:794px;min-width:794px;margin:0 auto;transform-origin:top center;transform:scale(var(--sheet-scale));will-change:transform}
 .report-sheet{width:794px;min-height:1123px;background:#fff;color:#0f172a;box-shadow:0 18px 45px rgba(15,23,42,.16);overflow:hidden;border-radius:4px}
 @media(max-width:639px){
@@ -58,7 +58,7 @@ button{cursor:pointer}
 .theme-soft{background:rgba(var(--accent-rgb),.08)}
 .theme-ring:focus{--tw-ring-color:rgba(var(--accent-rgb),.25)}
 ::-webkit-scrollbar{width:7px;height:7px}
-::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:999px}
+header button{padding:4px 7px!important;border-radius:6px!important;font-size:10px!important;gap:4px!important}header button i{width:12px!important;height:12px!important}header .flex.items-center.gap-2.shrink-0{gap:7px!important}header .flex.items-center.gap-1.order-2.sm\:order-3{gap:4px!important}::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:999px}
 
 @media print{
  body{background:#fff}
@@ -100,7 +100,7 @@ if (!window.FIELDINSPECT_AUTH?.SUPABASE_URL || !window.FIELDINSPECT_AUTH?.SUPABA
  </div>
 </header>
 
-<div class="sm:hidden shrink-0 sticky top-[57px] z-40 bg-slate-900/95 backdrop-blur border-b border-white/10 p-2">
+<div class="sm:hidden shrink-0 sticky top-[49px] z-40 bg-slate-900/95 backdrop-blur border-b border-white/10 p-2">
  <div class="grid grid-cols-2 bg-slate-800 p-1 rounded-xl">
   <button id="tabEditor" onclick="mobileTab('editor')" class="py-2 rounded-lg bg-indigo-600 text-white text-xs font-bold">Edit report</button>
   <button id="tabPreview" onclick="mobileTab('preview')" class="py-2 rounded-lg text-slate-300 text-xs font-bold">Preview</button>
@@ -173,9 +173,7 @@ if (!window.FIELDINSPECT_AUTH?.SUPABASE_URL || !window.FIELDINSPECT_AUTH?.SUPABA
     </div>
     <p class="text-[10px] text-slate-500 mt-0.5">Live preview of the report that will be exported to PDF.</p>
    </div>
-   <button type="button" onclick="fitPreview()" class="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 text-[10px] font-bold flex items-center gap-1.5 hover:bg-slate-50" title="Fit report to preview">
-    <i data-lucide="scan" class="w-3.5 h-3.5"></i>Fit
-   </button>
+
   </div>
   <div class="report-viewport flex-1 min-h-0 h-full overflow-y-auto overflow-x-hidden">
    <div id="reportScale" class="report-scale">
@@ -1264,5 +1262,5 @@ window.addEventListener('DOMContentLoaded',async()=>{
 <script type="module" src="./storage-sync.js"></script>
 <script type="module" src="./cloud-sync.js"></script>
 </body>
-<!-- FieldInspect release marker: v1.6.19 startup hardening. 2026-10-04 -->
+<!-- FieldInspect release marker: v1.6.20 preview/header UI update. 2026-10-04 -->
 </html>
