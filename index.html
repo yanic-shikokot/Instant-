@@ -997,7 +997,7 @@ const sigH=31;if(y+sigH>pageH-18){footer(doc.internal.getNumberOfPages(),doc.int
 }
 function csvCell(value){
  let s=String(value??'');
- if(/^[=+\\-@]/.test(s))s="'"+s;
+ if(/^[=+\-@]/.test(s))s="'"+s;
  return '"'+s.replace(/"/g,'""')+'"';
 }
 function exportCsv(){
