@@ -1,5 +1,5 @@
 // FieldInspect Pro Offline Service Worker
-const CACHE_NAME = 'fieldinspect-pro-v1.6.21';
+const CACHE_NAME = 'fieldinspect-pro-v1.6.22';
 const FONT_CACHE = 'fieldinspect-fonts-v1';
 
 const PRECACHE_ASSETS = [
