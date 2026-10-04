@@ -7,7 +7,7 @@
 <meta name="description" content="A fast, field-ready photo and inspection report generator for technicians, home inspectors, and contractors with live preview and instant multi-page PDF export.">
 <meta property="og:title" content="FieldInspect Pro - Photo & PDF Report Generator">
 <meta property="og:description" content="A fast, field-ready photo and inspection report generator for technicians, home inspectors, and contractors with live preview and instant multi-page PDF export.">
-<meta name="application-version" content="1.6.20">
+<meta name="application-version" content="1.6.21">
 <meta name="theme-color" content="#020617">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -23,7 +23,7 @@ window.tailwind.config={theme:{extend:{fontFamily:{sans:['Inter','ui-sans-serif'
 <link rel="stylesheet" href="./src/index.css">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Lora:wght@500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Lora:wght@500;600;700&family=Manrope:wght@400;500;600;700;800&family=Merriweather:wght@400;700;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Source+Sans+3:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script type="module" src="./src/vendor.js"></script>
 <style>
 :root{--accent:#4f46e5;--accent-rgb:79,70,229;--sheet-scale:1}
@@ -44,9 +44,16 @@ button{cursor:pointer}
  .workspace-editor,.workspace-preview{width:100%;flex:1 1 100%;border-right:0}
  .report-viewport{padding:10px 4px 30px}
 }
-.pdf-font-sans{font-family:Inter,Arial,sans-serif}
-.pdf-font-mono{font-family:'JetBrains Mono',Courier,monospace}
+.pdf-font-inter{font-family:Inter,Arial,sans-serif}
+.pdf-font-dm{font-family:'DM Sans',Arial,sans-serif}
+.pdf-font-jakarta{font-family:'Plus Jakarta Sans',Arial,sans-serif}
+.pdf-font-manrope{font-family:Manrope,Arial,sans-serif}
+.pdf-font-space{font-family:'Space Grotesk',Arial,sans-serif}
+.pdf-font-ibm{font-family:'IBM Plex Sans',Arial,sans-serif}
+.pdf-font-source{font-family:'Source Sans 3',Arial,sans-serif}
 .pdf-font-serif{font-family:Lora,Georgia,serif}
+.pdf-font-merriweather{font-family:Merriweather,Georgia,serif}
+.pdf-font-mono{font-family:'JetBrains Mono',Courier,monospace}
 .page-break-avoid,.defect-card,.signature-block{page-break-inside:avoid!important;break-inside:avoid!important}
 .sig-canvas{width:100%;height:92px;display:block;background:#fff;touch-action:none;cursor:crosshair}
 .photo-thumb{aspect-ratio:1/1;object-fit:cover}
@@ -58,7 +65,7 @@ button{cursor:pointer}
 .theme-soft{background:rgba(var(--accent-rgb),.08)}
 .theme-ring:focus{--tw-ring-color:rgba(var(--accent-rgb),.25)}
 ::-webkit-scrollbar{width:7px;height:7px}
-header button{padding:4px 7px!important;border-radius:6px!important;font-size:10px!important;gap:4px!important}header button i{width:12px!important;height:12px!important}header .flex.items-center.gap-2.shrink-0{gap:7px!important}header .flex.items-center.gap-1.order-2.sm\:order-3{gap:4px!important}::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:999px}
+.icon-action,.pdf-action{height:30px;padding:0 9px;border-radius:8px;border:1px solid #e2e8f0;background:#fff;color:#475569;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:5px;transition:.15s}.icon-action:hover{background:#f8fafc;border-color:#cbd5e1;color:#0f172a}.icon-action.primary{background:#0f172a;border-color:#0f172a;color:#fff}.icon-action.primary:hover{background:#1e293b}.pdf-action{background:var(--accent);border-color:var(--accent);color:#fff;padding:0 11px;box-shadow:0 3px 10px rgba(var(--accent-rgb),.22)}.pdf-action:hover{filter:brightness(.96)}.icon-action i,.pdf-action i{width:13px!important;height:13px!important}::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:999px}
 
 @media print{
  body{background:#fff}
@@ -85,17 +92,12 @@ if (!window.FIELDINSPECT_AUTH?.SUPABASE_URL || !window.FIELDINSPECT_AUTH?.SUPABA
 </script>
 </head>
 <body>
-<div id="app" class="h-screen min-h-screen flex flex-col overflow-hidden" data-fieldinspect-version="1.6.20">
-<header class="shrink-0 sticky top-0 z-50 bg-slate-950 text-white border-b border-white/10 shadow-lg">
- <div class="max-w-[1920px] mx-auto w-full px-3 sm:px-5 py-2.5 flex flex-wrap items-center gap-2 justify-between">
-  <div class="flex items-center gap-3 shrink-0">
-   <div class="w-9 h-9 rounded-xl flex items-center justify-center shadow-lg" style="background:var(--accent)"><i data-lucide="clipboard-check" class="w-5 h-5"></i></div>
-   <div><div class="font-extrabold tracking-tight text-sm sm:text-base">FieldInspect <span class="text-indigo-300">Pro</span></div><div class="text-[10px] text-slate-400 hidden sm:block">Commercial inspection reporting platform</div></div>
-  </div>
-  <div class="flex items-center gap-1.5 order-2 sm:order-3">
-   <button onclick="newInspection()" class="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold flex items-center gap-1.5"><i data-lucide="plus" class="w-3.5 h-3.5"></i>New</button><button onclick="window.saveCurrentToHistory?.()" class="px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 border border-indigo-500 text-xs font-bold flex items-center gap-1.5" title="Save the current inspection to History"><i data-lucide="save" class="w-3.5 h-3.5"></i>Save</button><button onclick="openHistory()" class="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold flex items-center gap-1.5"><i data-lucide="history" class="w-3.5 h-3.5"></i>History</button><button onclick="window.FIELDINSPECT_SYNC_NOW?.()" class="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold flex items-center gap-1.5" title="Synchronize inspections with the cloud"><i data-lucide="cloud-upload" class="w-3.5 h-3.5"></i><span id="cloudSyncText">Cloud ready</span></button>
-   <button id="accountButton" onclick="openAuth()" class="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold flex items-center gap-1.5"><i data-lucide="log-in" class="w-3.5 h-3.5"></i><span class="hidden sm:inline">Sign in</span></button><button id="installAppBtn" onclick="installPWA()" class="hidden px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 border border-emerald-500 text-xs font-bold text-white flex items-center gap-1.5 shadow-sm" title="Install FieldInspect Pro on your device"><i data-lucide="download" class="w-3.5 h-3.5"></i><span class="hidden sm:inline">Install</span></button><button onclick="loadSample()" class="hidden md:flex px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold items-center gap-1.5"><i data-lucide="sparkles" class="w-3.5 h-3.5 text-amber-300"></i>Sample</button>
-   <button onclick="handlePdf()" class="px-3 py-1.5 rounded-lg text-xs font-bold text-white shadow-lg flex items-center gap-1.5" style="background:var(--accent)"><i data-lucide="file-down" class="w-4 h-4"></i>Download PDF</button>
+<div id="app" class="h-screen min-h-screen flex flex-col overflow-hidden" data-fieldinspect-version="1.6.21">
+<header class="shrink-0 sticky top-0 z-50 bg-white text-slate-900 border-b border-slate-200 shadow-sm">
+ <div class="max-w-[1920px] mx-auto w-full px-3 sm:px-5 py-2 flex items-center justify-between gap-3">
+  <div class="flex items-center gap-2.5 min-w-0"><div class="w-8 h-8 rounded-lg flex items-center justify-center shadow-sm shrink-0" style="background:var(--accent);color:#fff"><i data-lucide="clipboard-check" class="w-4 h-4"></i></div><div class="min-w-0"><div class="font-extrabold tracking-tight text-sm leading-none">FieldInspect <span style="color:var(--accent)">Pro</span></div><div class="text-[9px] text-slate-400 mt-1 hidden sm:block">Professional inspection reporting</div></div></div>
+  <div class="flex items-center gap-1.5 shrink-0">
+   <button onclick="newInspection()" class="icon-action" title="New inspection" aria-label="New inspection"><i data-lucide="plus"></i><span>New</span></button><button onclick="window.saveCurrentToHistory?.()" class="icon-action primary" title="Save current inspection" aria-label="Save current inspection"><i data-lucide="save"></i><span>Save</span></button><button onclick="openHistory()" class="icon-action" title="History" aria-label="History"><i data-lucide="history"></i><span class="hidden sm:inline">History</span></button><button onclick="window.FIELDINSPECT_SYNC_NOW?.()" class="icon-action" title="Cloud sync" aria-label="Cloud sync"><i data-lucide="cloud"></i><span class="hidden lg:inline">Sync</span></button><button id="accountButton" onclick="openAuth()" class="icon-action" title="Account" aria-label="Account"><i data-lucide="user-round"></i><span class="hidden lg:inline">Account</span></button><button onclick="handlePdf()" class="pdf-action" title="Download PDF"><i data-lucide="file-down"></i><span class="hidden sm:inline">PDF</span></button>
   </div>
  </div>
 </header>
@@ -115,18 +117,18 @@ if (!window.FIELDINSPECT_AUTH?.SUPABASE_URL || !window.FIELDINSPECT_AUTH?.SUPABA
    <span id="saveStatus" class="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-1">Saved</span>
   </div>
 
-  <div class="grid sm:grid-cols-3 gap-3">
-   <div class="rounded-xl border border-slate-200 bg-slate-50 p-3">
-    <div class="text-[10px] uppercase font-extrabold text-slate-500 mb-2 flex gap-1.5 items-center"><i data-lucide="palette" class="w-3.5 h-3.5"></i>Accent</div>
-    <div class="flex gap-1.5 flex-wrap" id="themeButtons"></div>
-   </div>
-   <div class="rounded-xl border border-slate-200 bg-slate-50 p-3">
-    <div class="text-[10px] uppercase font-extrabold text-slate-500 mb-2 flex gap-1.5 items-center"><i data-lucide="type" class="w-3.5 h-3.5"></i>Typography</div>
-    <select id="fontSelect" onchange="setFont(this.value)" class="w-full text-xs bg-white border border-slate-300 rounded-lg px-2 py-2"><option value="sans">Modern Sans</option><option value="mono">Technical Mono</option><option value="serif">Executive Serif</option></select>
-   </div>
-   <div class="rounded-xl border border-slate-200 bg-slate-50 p-3">
-    <div class="text-[10px] uppercase font-extrabold text-slate-500 mb-2 flex gap-1.5 items-center"><i data-lucide="layout-template" class="w-3.5 h-3.5"></i>Template</div>
-    <select id="templateSelect" class="w-full text-xs bg-white border border-slate-300 rounded-lg px-2 py-2"><option value="residential">Residential</option><option value="commercial">Commercial HVAC</option><option value="punchlist">Contractor Punchlist</option><option value="roofing">Roofing & Flashing</option><option value="electrical">Electrical Panel</option></select>
+  <div class="flex items-center justify-between">
+   <div><div class="text-xs font-extrabold text-slate-700">Report design</div><p class="text-[10px] text-slate-400 mt-0.5">Template, typography and accent are now in one place.</p></div>
+   <div class="relative">
+    <button id="designMenuButton" onclick="toggleDesignMenu()" class="h-9 w-9 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 shadow-sm flex items-center justify-center text-slate-600" title="Design settings" aria-label="Open design settings"><i data-lucide="sliders-horizontal" class="w-4 h-4"></i></button>
+    <div id="designMenu" class="hidden absolute right-0 top-11 z-50 w-[330px] rounded-2xl border border-slate-200 bg-white shadow-2xl p-4">
+     <div class="flex items-center justify-between mb-3"><div><div class="text-sm font-extrabold text-slate-900">Design settings</div><div class="text-[10px] text-slate-400">Customize the exported report</div></div><button onclick="toggleDesignMenu(false)" class="w-7 h-7 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-400" title="Close"><i data-lucide="x" class="w-4 h-4"></i></button></div>
+     <div class="space-y-4">
+      <div><div class="text-[10px] uppercase tracking-wider font-extrabold text-slate-500 mb-2 flex items-center gap-1.5"><i data-lucide="palette" class="w-3.5 h-3.5"></i>Accent & theme</div><div id="themeButtons" class="grid grid-cols-5 gap-2"></div></div>
+      <div><label class="text-[10px] uppercase tracking-wider font-extrabold text-slate-500 mb-2 block">Typography</label><select id="fontSelect" onchange="setFont(this.value)" class="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2.5"><option value="inter">Inter — Clean</option><option value="dm">DM Sans — Friendly</option><option value="jakarta">Plus Jakarta Sans — Modern</option><option value="manrope">Manrope — Premium</option><option value="space">Space Grotesk — Technical</option><option value="ibm">IBM Plex Sans — Engineering</option><option value="source">Source Sans 3 — Editorial</option><option value="serif">Lora — Executive Serif</option><option value="merriweather">Merriweather — Formal</option><option value="mono">JetBrains Mono — Technical</option></select></div>
+      <div><label class="text-[10px] uppercase tracking-wider font-extrabold text-slate-500 mb-2 block">Report template</label><select id="templateSelect" onchange="applyTemplate()" class="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2.5"><option value="residential">Residential Inspection</option><option value="commercial">Commercial HVAC</option><option value="punchlist">Contractor Punchlist</option><option value="roofing">Roofing & Flashing</option><option value="electrical">Electrical Panel</option><option value="fire">Fire Safety Inspection</option><option value="plumbing">Plumbing Inspection</option><option value="solar">Solar PV Inspection</option><option value="generator">Generator / Backup Power</option><option value="workplace">Workplace Safety</option><option value="handover">Property Handover</option><option value="condition">General Condition Report</option></select></div>
+     </div>
+    </div>
    </div>
   </div>
 
@@ -233,16 +235,36 @@ if (!window.FIELDINSPECT_AUTH?.SUPABASE_URL || !window.FIELDINSPECT_AUTH?.SUPABA
 const STORAGE='fieldinspect-pro-v2';
 const THEMES={
  violet:{name:'Indigo',hex:'#4f46e5',rgb:'79,70,229'},
- blue:{name:'Navy',hex:'#1d4ed8',rgb:'29,78,216'},
+ navy:{name:'Navy',hex:'#1e3a8a',rgb:'30,58,138'},
+ cyan:{name:'Cyan',hex:'#0891b2',rgb:'8,145,178'},
+ teal:{name:'Teal',hex:'#0f766e',rgb:'15,118,110'},
  emerald:{name:'Emerald',hex:'#059669',rgb:'5,150,105'},
  orange:{name:'Safety Orange',hex:'#ea580c',rgb:'234,88,12'},
- slate:{name:'Slate',hex:'#334155',rgb:'51,65,85'}
+ red:{name:'Inspection Red',hex:'#dc2626',rgb:'220,38,38'},
+ plum:{name:'Plum',hex:'#7e22ce',rgb:'126,34,206'},
+ slate:{name:'Slate',hex:'#334155',rgb:'51,65,85'},
+ graphite:{name:'Graphite',hex:'#111827',rgb:'17,24,39'}
+};
+const TEMPLATES={
+ residential:{name:'Residential Inspection',title:'Residential Property Inspection',conditions:'General site inspection · visual checks'},
+ commercial:{name:'Commercial HVAC',title:'Commercial HVAC Inspection',conditions:'HVAC operational · visual and functional checks'},
+ punchlist:{name:'Contractor Punchlist',title:'Contractor Punchlist',conditions:'Construction phase · punchlist review'},
+ roofing:{name:'Roofing & Flashing',title:'Roofing & Flashing Inspection',conditions:'Roof surface · weather and drainage review'},
+ electrical:{name:'Electrical Panel',title:'Electrical Panel Inspection',conditions:'System energized · visual and functional checks'},
+ fire:{name:'Fire Safety',title:'Fire Safety Inspection',conditions:'Life-safety systems · visual compliance checks'},
+ plumbing:{name:'Plumbing',title:'Plumbing Inspection',conditions:'Water systems · leak and fixture checks'},
+ solar:{name:'Solar PV',title:'Solar PV Inspection',conditions:'PV system · inverter and mounting checks'},
+ generator:{name:'Generator / Backup Power',title:'Generator & Backup Power Inspection',conditions:'Backup system · operational checks'},
+ workplace:{name:'Workplace Safety',title:'Workplace Safety Inspection',conditions:'Workplace · hazard and compliance review'},
+ handover:{name:'Property Handover',title:'Property Handover Inspection',conditions:'Handover review · defects and finishes'},
+ condition:{name:'General Condition',title:'General Condition Report',conditions:'General condition · visual inspection'}
 };
 const DEFAULT_STATE={
  meta:{reportId:'',storageId:'',inspectionDate:'',projectName:'',inspectorName:'',clientName:'',siteLocation:'',conditions:'',overallStatus:'Attention required',workflowStatus:'draft'},
  items:[],
  theme:'violet',
- font:'sans',
+ font:'inter',
+ template:'residential',
  signatures:{inspector:'',client:''},
  attachments:[]
 };
@@ -437,6 +459,7 @@ if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
  });
 }
 
+document.addEventListener('click',e=>{const menu=document.getElementById('designMenu'),button=document.getElementById('designMenuButton');if(menu&&!menu.classList.contains('hidden')&&!menu.contains(e.target)&&!button?.contains(e.target))toggleDesignMenu(false)});
 window.addEventListener('DOMContentLoaded',()=>{
  try{init()}catch(error){console.error('FieldInspect initialization failed:',error);}
 });
@@ -457,27 +480,23 @@ function bindFields(){
   }
  });
  const font=document.getElementById('fontSelect');
- if(font)font.value=state.font;
+ if(font){font.value=state.font==='sans'?'inter':state.font; if(state.font==='sans')state.font='inter';}
  const template=document.getElementById('templateSelect');
+ if(template)template.value=state.template||'residential';
  if(template && template.dataset.templateBound!=='1'){
   template.addEventListener('change',applyTemplate);
   template.dataset.templateBound='1';
  }
 }
 function renderThemes(){
- const wrap=document.getElementById('themeButtons');
- wrap.innerHTML=Object.entries(THEMES).map(([key,t])=>'<button title="'+t.name+'" onclick="setTheme(\''+key+'\')" class="w-7 h-7 rounded-lg border-2 '+(state.theme===key?'border-slate-900':'border-transparent')+' flex items-center justify-center" style="background:'+t.hex+'">'+(state.theme===key?'✓':'')+'</button>').join('');
+ const wrap=document.getElementById('themeButtons'); if(!wrap)return;
+ wrap.innerHTML=Object.entries(THEMES).map(([key,t])=>'<button type="button" title="'+t.name+'" onclick="setTheme(\''+key+'\')" class="h-7 rounded-lg border-2 '+(state.theme===key?'border-slate-900 ring-2 ring-slate-200':'border-transparent')+' flex items-center justify-center" style="background:'+t.hex+'">'+(state.theme===key?'<i data-lucide="check" class="w-3.5 h-3.5 text-white"></i>':'')+'</button>').join('');
+ if(window.lucide?.createIcons)window.lucide.createIcons();
 }
-function setTheme(key){state.theme=key;document.documentElement.style.setProperty('--accent',THEMES[key].hex);document.documentElement.style.setProperty('--accent-rgb',THEMES[key].rgb);renderThemes();persist();renderReport();if(window.lucide?.createIcons)window.lucide.createIcons()}
+function toggleDesignMenu(force){const el=document.getElementById('designMenu');if(!el)return;const show=typeof force==='boolean'?force:el.classList.contains('hidden');el.classList.toggle('hidden',!show);if(show&&window.lucide?.createIcons)window.lucide.createIcons()}
+function setTheme(key){if(!THEMES[key])return;state.theme=key;document.documentElement.style.setProperty('--accent',THEMES[key].hex);document.documentElement.style.setProperty('--accent-rgb',THEMES[key].rgb);renderThemes();persist();renderReport()}
 function setFont(font){state.font=font;persist();renderReport()}
-function applyTemplate(){
- const t=document.getElementById('templateSelect').value;
- const names={residential:'Residential Property Inspection',commercial:'Commercial HVAC Inspection',punchlist:'Contractor Punchlist',roofing:'Roofing & Flashing Inspection',electrical:'Electrical Panel Inspection'};
- state.meta.projectName=names[t]||names.residential;
- if(t==='electrical')state.meta.conditions='System energized · visual and functional checks';
- if(!state.items.length)addDefect(false);
- bindFields();renderReport();persist();
-}
+function applyTemplate(){const t=document.getElementById('templateSelect')?.value||'residential';const preset=TEMPLATES[t]||TEMPLATES.residential;state.template=t;state.meta.projectName=preset.title;state.meta.conditions=preset.conditions;if(['electrical','fire','solar','generator','workplace'].includes(t)&&!state.items.length)addDefect(false);bindFields();renderReport();persist()}
 function hasInspectionContent(){
  const m=state.meta||{};
  return Boolean(
@@ -741,7 +760,7 @@ function compressImage(file,maxSide=1400,quality=.78){
 function renderReport(){
  const t=THEMES[state.theme],s=state.meta;
  document.documentElement.style.setProperty('--accent',t.hex);document.documentElement.style.setProperty('--accent-rgb',t.rgb);
- const font=state.font==='mono'?'pdf-font-mono':state.font==='serif'?'pdf-font-serif':'pdf-font-sans';
+ const fontMap={inter:'pdf-font-inter',dm:'pdf-font-dm',jakarta:'pdf-font-jakarta',manrope:'pdf-font-manrope',space:'pdf-font-space',ibm:'pdf-font-ibm',source:'pdf-font-source',serif:'pdf-font-serif',merriweather:'pdf-font-merriweather',mono:'pdf-font-mono'}; const font=fontMap[state.font]||fontMap.inter;
  const counts={high:0,medium:0,low:0};state.items.forEach(i=>counts[i.severity]++);
  const cards=state.items.map((it,i)=>{
   const sev=it.severity==='high'?['bg-rose-50','text-rose-700','CRITICAL']:it.severity==='medium'?['bg-amber-50','text-amber-700','MONITOR']:['bg-blue-50','text-blue-700','ADVISORY'];
