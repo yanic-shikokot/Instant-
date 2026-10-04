@@ -1,10 +1,10 @@
 name: Build Windows Installer
 
-on:
 concurrency:
-  group: fieldinspect-build-{{ github.ref }{'}'}
+  group: fieldinspect-build-${{ github.ref }}
   cancel-in-progress: true
 
+on:
   push:
     branches: [main]
   workflow_dispatch:
