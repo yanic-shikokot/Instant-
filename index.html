@@ -1409,7 +1409,9 @@ window.submitAuth=async function(){
   try{
     if(authMode==='signup'){
       const name=document.getElementById('authName').value.trim();
+      const confirm=document.getElementById('authConfirm').value;
       if(!name){authMessage('Enter your full name.');return}
+      if(confirm!==password){authMessage('Passwords do not match.');return}
       const {data,error}=await supabase.auth.signUp({email,password,options:{data:{full_name:name},emailRedirectTo:authRedirectUrl()||undefined}});
       if(error)throw error;
       if(data.session){
