@@ -7,7 +7,7 @@
 <meta name="description" content="A fast, field-ready photo and inspection report generator for technicians, home inspectors, and contractors with live preview and instant multi-page PDF export.">
 <meta property="og:title" content="FieldInspect Pro - Photo & PDF Report Generator">
 <meta property="og:description" content="A fast, field-ready photo and inspection report generator for technicians, home inspectors, and contractors with live preview and instant multi-page PDF export.">
-<meta name="application-version" content="1.6.21">
+<meta name="application-version" content="1.6.22">
 <meta name="theme-color" content="#020617">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -66,6 +66,31 @@ button{cursor:pointer}
 .theme-ring:focus{--tw-ring-color:rgba(var(--accent-rgb),.25)}
 ::-webkit-scrollbar{width:7px;height:7px}
 .icon-action,.pdf-action{height:30px;padding:0 9px;border-radius:8px;border:1px solid #e2e8f0;background:#fff;color:#475569;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:5px;transition:.15s}.icon-action:hover{background:#f8fafc;border-color:#cbd5e1;color:#0f172a}.icon-action.primary{background:#0f172a;border-color:#0f172a;color:#fff}.icon-action.primary:hover{background:#1e293b}.pdf-action{background:var(--accent);border-color:var(--accent);color:#fff;padding:0 11px;box-shadow:0 3px 10px rgba(var(--accent-rgb),.22)}.pdf-action:hover{filter:brightness(.96)}.icon-action i,.pdf-action i{width:13px!important;height:13px!important}::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:999px}
+body.ui-dark{background:#070d18;color:#e5e7eb}
+body.ui-dark #app{background:#070d18}
+body.ui-dark header{background:#0b1220!important;color:#e5e7eb!important;border-color:#1e293b!important}
+body.ui-dark .workspace-editor{background:#0b1220;border-color:#1e293b}
+body.ui-dark .workspace-editor .border-slate-200{border-color:#243244}
+body.ui-dark .workspace-editor .bg-slate-50{background:#111b2b}
+body.ui-dark .workspace-editor .bg-white{background:#0f172a}
+body.ui-dark .workspace-editor [class*="text-slate-900"],body.ui-dark .workspace-editor [class*="text-slate-800"],body.ui-dark .workspace-editor [class*="text-slate-700"],body.ui-dark .workspace-editor [class*="text-slate-600"]{color:#e5e7eb}
+body.ui-dark .workspace-editor [class*="text-slate-500"],body.ui-dark .workspace-editor [class*="text-slate-400"]{color:#94a3b8}
+body.ui-dark .field{background:#0b1220;color:#f8fafc;border-color:#334155}
+body.ui-dark .field::placeholder{color:#64748b}
+body.ui-dark .workspace-preview{background:#0b1220}
+body.ui-dark .workspace-preview .bg-slate-50{background:#111827}
+body.ui-dark #designMenu{background:#0f172a;border-color:#334155}
+body.ui-dark #designMenu .text-slate-900{color:#f8fafc}
+body.ui-dark #designMenu .text-slate-500{color:#94a3b8}
+body.ui-dark #fontSelect,body.ui-dark #templateSelect{background:#111827;color:#f8fafc;border-color:#334155}
+body.ui-dark .icon-action{background:#111827;border-color:#334155;color:#cbd5e1}
+body.ui-dark .icon-action.primary{background:#f8fafc;color:#0f172a;border-color:#f8fafc}
+body.ui-dark .report-viewport{background:#0b1220}
+body.ui-dark #reportSheet{background:#fff!important;color:#0f172a!important;box-shadow:0 18px 45px rgba(0,0,0,.45)}
+body.ui-dark #reportSheet *{--tw-text-opacity:1}
+.ui-theme-toggle{width:30px!important;padding:0!important}
+.design-menu-fast{animation:designMenuIn .12s ease-out}
+@keyframes designMenuIn{from{opacity:0;transform:translateY(-3px) scale(.99)}to{opacity:1;transform:none}}
 
 @media print{
  body{background:#fff}
@@ -92,12 +117,12 @@ if (!window.FIELDINSPECT_AUTH?.SUPABASE_URL || !window.FIELDINSPECT_AUTH?.SUPABA
 </script>
 </head>
 <body>
-<div id="app" class="h-screen min-h-screen flex flex-col overflow-hidden" data-fieldinspect-version="1.6.21">
+<div id="app" class="h-screen min-h-screen flex flex-col overflow-hidden" data-fieldinspect-version="1.6.22">
 <header class="shrink-0 sticky top-0 z-50 bg-white text-slate-900 border-b border-slate-200 shadow-sm">
  <div class="max-w-[1920px] mx-auto w-full px-3 sm:px-5 py-2 flex items-center justify-between gap-3">
   <div class="flex items-center gap-2.5 min-w-0"><div class="w-8 h-8 rounded-lg flex items-center justify-center shadow-sm shrink-0" style="background:var(--accent);color:#fff"><i data-lucide="clipboard-check" class="w-4 h-4"></i></div><div class="min-w-0"><div class="font-extrabold tracking-tight text-sm leading-none">FieldInspect <span style="color:var(--accent)">Pro</span></div><div class="text-[9px] text-slate-400 mt-1 hidden sm:block">Professional inspection reporting</div></div></div>
   <div class="flex items-center gap-1.5 shrink-0">
-   <button onclick="newInspection()" class="icon-action" title="New inspection" aria-label="New inspection"><i data-lucide="plus"></i><span>New</span></button><button onclick="window.saveCurrentToHistory?.()" class="icon-action primary" title="Save current inspection" aria-label="Save current inspection"><i data-lucide="save"></i><span>Save</span></button><button onclick="openHistory()" class="icon-action" title="History" aria-label="History"><i data-lucide="history"></i><span class="hidden sm:inline">History</span></button><button onclick="window.FIELDINSPECT_SYNC_NOW?.()" class="icon-action" title="Cloud sync" aria-label="Cloud sync"><i data-lucide="cloud"></i><span class="hidden lg:inline">Sync</span></button><button id="accountButton" onclick="openAuth()" class="icon-action" title="Account" aria-label="Account"><i data-lucide="user-round"></i><span class="hidden lg:inline">Account</span></button><button onclick="handlePdf()" class="pdf-action" title="Download PDF"><i data-lucide="file-down"></i><span class="hidden sm:inline">PDF</span></button>
+   <button onclick="newInspection()" class="icon-action" title="New inspection" aria-label="New inspection"><i data-lucide="plus"></i><span>New</span></button><button onclick="window.saveCurrentToHistory?.()" class="icon-action primary" title="Save current inspection" aria-label="Save current inspection"><i data-lucide="save"></i><span>Save</span></button><button onclick="openHistory()" class="icon-action" title="History" aria-label="History"><i data-lucide="history"></i><span class="hidden sm:inline">History</span></button><button onclick="window.FIELDINSPECT_SYNC_NOW?.()" class="icon-action" title="Cloud sync" aria-label="Cloud sync"><i data-lucide="cloud"></i><span class="hidden lg:inline">Sync</span></button><button id="uiThemeButton" onclick="toggleUiTheme()" class="icon-action ui-theme-toggle" title="Dark mode" aria-label="Toggle dark mode"><i data-lucide="moon"></i></button><button id="accountButton" onclick="openAuth()" class="icon-action" title="Account" aria-label="Account"><i data-lucide="user-round"></i><span class="hidden lg:inline">Account</span></button><button onclick="handlePdf()" class="pdf-action" title="Download PDF"><i data-lucide="file-down"></i><span class="hidden sm:inline">PDF</span></button>
   </div>
  </div>
 </header>
@@ -126,7 +151,7 @@ if (!window.FIELDINSPECT_AUTH?.SUPABASE_URL || !window.FIELDINSPECT_AUTH?.SUPABA
      <div class="space-y-4">
       <div><div class="text-[10px] uppercase tracking-wider font-extrabold text-slate-500 mb-2 flex items-center gap-1.5"><i data-lucide="palette" class="w-3.5 h-3.5"></i>Accent & theme</div><div id="themeButtons" class="grid grid-cols-5 gap-2"></div></div>
       <div><label class="text-[10px] uppercase tracking-wider font-extrabold text-slate-500 mb-2 block">Typography</label><select id="fontSelect" onchange="setFont(this.value)" class="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2.5"><option value="inter">Inter — Clean</option><option value="dm">DM Sans — Friendly</option><option value="jakarta">Plus Jakarta Sans — Modern</option><option value="manrope">Manrope — Premium</option><option value="space">Space Grotesk — Technical</option><option value="ibm">IBM Plex Sans — Engineering</option><option value="source">Source Sans 3 — Editorial</option><option value="serif">Lora — Executive Serif</option><option value="merriweather">Merriweather — Formal</option><option value="mono">JetBrains Mono — Technical</option></select></div>
-      <div><label class="text-[10px] uppercase tracking-wider font-extrabold text-slate-500 mb-2 block">Report template</label><select id="templateSelect" onchange="applyTemplate()" class="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2.5"><option value="residential">Residential Inspection</option><option value="commercial">Commercial HVAC</option><option value="punchlist">Contractor Punchlist</option><option value="roofing">Roofing & Flashing</option><option value="electrical">Electrical Panel</option><option value="fire">Fire Safety Inspection</option><option value="plumbing">Plumbing Inspection</option><option value="solar">Solar PV Inspection</option><option value="generator">Generator / Backup Power</option><option value="workplace">Workplace Safety</option><option value="handover">Property Handover</option><option value="condition">General Condition Report</option></select></div>
+      <div><label class="text-[10px] uppercase tracking-wider font-extrabold text-slate-500 mb-2 block">Report template</label><select id="templateSelect" onchange="applyTemplate()" class="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2.5"><option value="residential">Residential Inspection</option><option value="commercial">Commercial HVAC</option><option value="punchlist">Contractor Punchlist</option><option value="roofing">Roofing & Flashing</option><option value="electrical">Electrical Panel</option><option value="fire">Fire Safety Inspection</option><option value="plumbing">Plumbing Inspection</option><option value="solar">Solar PV Inspection</option><option value="generator">Generator / Backup Power</option><option value="workplace">Workplace Safety</option><option value="handover">Property Handover</option><option value="condition">General Condition Report</option><option value="executive">Executive / Client Report</option><option value="modern">Modern Corporate A4</option><option value="geometric">Geometric Professional</option><option value="darktech">Dark Tech / Engineering</option><option value="photo">Photo-Led Field Report</option><option value="editorial">Editorial Minimal</option><option value="construction">Construction Progress</option><option value="audit">Compliance / Audit</option></select></div>
      </div>
     </div>
    </div>
@@ -246,18 +271,26 @@ const THEMES={
  graphite:{name:'Graphite',hex:'#111827',rgb:'17,24,39'}
 };
 const TEMPLATES={
- residential:{name:'Residential Inspection',title:'Residential Property Inspection',conditions:'General site inspection · visual checks'},
- commercial:{name:'Commercial HVAC',title:'Commercial HVAC Inspection',conditions:'HVAC operational · visual and functional checks'},
- punchlist:{name:'Contractor Punchlist',title:'Contractor Punchlist',conditions:'Construction phase · punchlist review'},
- roofing:{name:'Roofing & Flashing',title:'Roofing & Flashing Inspection',conditions:'Roof surface · weather and drainage review'},
- electrical:{name:'Electrical Panel',title:'Electrical Panel Inspection',conditions:'System energized · visual and functional checks'},
- fire:{name:'Fire Safety',title:'Fire Safety Inspection',conditions:'Life-safety systems · visual compliance checks'},
- plumbing:{name:'Plumbing',title:'Plumbing Inspection',conditions:'Water systems · leak and fixture checks'},
- solar:{name:'Solar PV',title:'Solar PV Inspection',conditions:'PV system · inverter and mounting checks'},
- generator:{name:'Generator / Backup Power',title:'Generator & Backup Power Inspection',conditions:'Backup system · operational checks'},
- workplace:{name:'Workplace Safety',title:'Workplace Safety Inspection',conditions:'Workplace · hazard and compliance review'},
- handover:{name:'Property Handover',title:'Property Handover Inspection',conditions:'Handover review · defects and finishes'},
- condition:{name:'General Condition',title:'General Condition Report',conditions:'General condition · visual inspection'}
+ residential:{name:'Residential Inspection',title:'Residential Property Inspection',conditions:'General site inspection · visual checks',design:'minimal'},
+ commercial:{name:'Commercial HVAC',title:'Commercial HVAC Inspection',conditions:'HVAC operational · visual and functional checks',design:'corporate'},
+ punchlist:{name:'Contractor Punchlist',title:'Contractor Punchlist',conditions:'Construction phase · punchlist review',design:'grid'},
+ roofing:{name:'Roofing & Flashing',title:'Roofing & Flashing Inspection',conditions:'Roof surface · weather and drainage review',design:'minimal'},
+ electrical:{name:'Electrical Panel',title:'Electrical Panel Inspection',conditions:'System energized · visual and functional checks',design:'technical'},
+ fire:{name:'Fire Safety',title:'Fire Safety Inspection',conditions:'Life-safety systems · visual compliance checks',design:'safety'},
+ plumbing:{name:'Plumbing',title:'Plumbing Inspection',conditions:'Water systems · leak and fixture checks',design:'corporate'},
+ solar:{name:'Solar PV',title:'Solar PV Inspection',conditions:'PV system · inverter and mounting checks',design:'gradient'},
+ generator:{name:'Generator / Backup Power',title:'Generator & Backup Power Inspection',conditions:'Backup system · operational checks',design:'technical'},
+ workplace:{name:'Workplace Safety',title:'Workplace Safety Inspection',conditions:'Workplace · hazard and compliance review',design:'safety'},
+ handover:{name:'Property Handover',title:'Property Handover Inspection',conditions:'Handover review · defects and finishes',design:'executive'},
+ condition:{name:'General Condition',title:'General Condition Report',conditions:'General condition · visual inspection',design:'minimal'},
+ executive:{name:'Executive / Client Report',title:'Executive Inspection Report',conditions:'Client-ready executive summary · inspection findings',design:'executive'},
+ modern:{name:'Modern Corporate A4',title:'Modern Corporate Inspection Report',conditions:'Professional inspection · structured findings',design:'corporate'},
+ geometric:{name:'Geometric Professional',title:'Professional Site Inspection Report',conditions:'Structured inspection · geometric visual system',design:'geometric'},
+ darktech:{name:'Dark Tech / Engineering',title:'Engineering Inspection Report',conditions:'Technical inspection · systems and equipment',design:'darktech'},
+ photo:{name:'Photo-Led Field Report',title:'Photo Inspection Report',conditions:'Evidence-led inspection · photo documentation',design:'photo'},
+ editorial:{name:'Editorial Minimal',title:'Inspection & Condition Report',conditions:'Formal inspection · clean editorial layout',design:'editorial'},
+ construction:{name:'Construction Progress',title:'Construction Progress Inspection',conditions:'Site progress · quality and punchlist review',design:'construction'},
+ audit:{name:'Compliance / Audit',title:'Compliance & Audit Inspection',conditions:'Compliance review · evidence and corrective actions',design:'audit'}
 };
 const DEFAULT_STATE={
  meta:{reportId:'',storageId:'',inspectionDate:'',projectName:'',inspectorName:'',clientName:'',siteLocation:'',conditions:'',overallStatus:'Attention required',workflowStatus:'draft'},
@@ -265,6 +298,7 @@ const DEFAULT_STATE={
  theme:'violet',
  font:'inter',
  template:'residential',
+ uiTheme:'light',
  signatures:{inspector:'',client:''},
  attachments:[]
 };
@@ -461,6 +495,7 @@ if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
 
 document.addEventListener('click',e=>{const menu=document.getElementById('designMenu'),button=document.getElementById('designMenuButton');if(menu&&!menu.classList.contains('hidden')&&!menu.contains(e.target)&&!button?.contains(e.target))toggleDesignMenu(false)});
 window.addEventListener('DOMContentLoaded',()=>{
+ applyUiTheme();
  try{init()}catch(error){console.error('FieldInspect initialization failed:',error);}
 });
 function bindFields(){
@@ -488,12 +523,29 @@ function bindFields(){
   template.dataset.templateBound='1';
  }
 }
+function applyUiTheme(){
+ const dark=state.uiTheme==='dark';
+ document.body.classList.toggle('ui-dark',dark);
+ document.body.dataset.uiTheme=dark?'dark':'light';
+ const btn=document.getElementById('uiThemeButton');
+ if(btn){
+  btn.title=dark?'Light mode':'Dark mode';
+  btn.setAttribute('aria-label',dark?'Switch to light mode':'Switch to dark mode');
+  btn.innerHTML='<i data-lucide="'+(dark?'sun':'moon')+'"></i>';
+  if(window.lucide?.createIcons)window.lucide.createIcons();
+ }
+}
+function toggleUiTheme(){
+ state.uiTheme=state.uiTheme==='dark'?'light':'dark';
+ applyUiTheme();
+ persist();
+}
 function renderThemes(){
  const wrap=document.getElementById('themeButtons'); if(!wrap)return;
  wrap.innerHTML=Object.entries(THEMES).map(([key,t])=>'<button type="button" title="'+t.name+'" onclick="setTheme(\''+key+'\')" class="h-7 rounded-lg border-2 '+(state.theme===key?'border-slate-900 ring-2 ring-slate-200':'border-transparent')+' flex items-center justify-center" style="background:'+t.hex+'">'+(state.theme===key?'<i data-lucide="check" class="w-3.5 h-3.5 text-white"></i>':'')+'</button>').join('');
  if(window.lucide?.createIcons)window.lucide.createIcons();
 }
-function toggleDesignMenu(force){const el=document.getElementById('designMenu');if(!el)return;const show=typeof force==='boolean'?force:el.classList.contains('hidden');el.classList.toggle('hidden',!show);if(show&&window.lucide?.createIcons)window.lucide.createIcons()}
+function toggleDesignMenu(force){const el=document.getElementById('designMenu');if(!el)return;const show=typeof force==='boolean'?force:el.classList.contains('hidden');el.classList.toggle('hidden',!show);el.classList.toggle('design-menu-fast',show)}
 function setTheme(key){if(!THEMES[key])return;state.theme=key;document.documentElement.style.setProperty('--accent',THEMES[key].hex);document.documentElement.style.setProperty('--accent-rgb',THEMES[key].rgb);renderThemes();persist();renderReport()}
 function setFont(font){state.font=font;persist();renderReport()}
 function applyTemplate(){const t=document.getElementById('templateSelect')?.value||'residential';const preset=TEMPLATES[t]||TEMPLATES.residential;state.template=t;state.meta.projectName=preset.title;state.meta.conditions=preset.conditions;if(['electrical','fire','solar','generator','workplace'].includes(t)&&!state.items.length)addDefect(false);bindFields();renderReport();persist()}
@@ -761,6 +813,9 @@ function renderReport(){
  const t=THEMES[state.theme],s=state.meta;
  document.documentElement.style.setProperty('--accent',t.hex);document.documentElement.style.setProperty('--accent-rgb',t.rgb);
  const fontMap={inter:'pdf-font-inter',dm:'pdf-font-dm',jakarta:'pdf-font-jakarta',manrope:'pdf-font-manrope',space:'pdf-font-space',ibm:'pdf-font-ibm',source:'pdf-font-source',serif:'pdf-font-serif',merriweather:'pdf-font-merriweather',mono:'pdf-font-mono'}; const font=fontMap[state.font]||fontMap.inter;
+ const design=(TEMPLATES[state.template]||TEMPLATES.residential).design||'minimal';
+ const designClass='report-design-'+design;
+ const designHeader=design==='darktech'?'background:#0f172a;color:#fff;border-bottom:6px solid var(--accent)':design==='executive'?'background:#111827;color:#fff':design==='geometric'?'background:linear-gradient(135deg,var(--accent) 0%,var(--accent) 62%,#0f172a 62%,#0f172a 100%);color:#fff':design==='gradient'?'background:linear-gradient(135deg,var(--accent),#0f172a);color:#fff':design==='technical'?'background:#f8fafc;color:#0f172a;border-left:8px solid var(--accent);border-bottom:1px solid #e2e8f0':design==='photo'?'background:#0f172a;color:#fff;border-bottom:4px solid var(--accent)':design==='editorial'?'background:#fff;color:#0f172a;border-bottom:1px solid #cbd5e1':design==='construction'?'background:#fff7ed;color:#0f172a;border-top:7px solid var(--accent);border-bottom:1px solid #fed7aa':design==='audit'?'background:#f8fafc;color:#0f172a;border-left:7px solid var(--accent)':design==='safety'?'background:linear-gradient(90deg,#0f172a 0%,#0f172a 78%,var(--accent) 78%);color:#fff':'background:var(--accent);color:#fff';
  const counts={high:0,medium:0,low:0};state.items.forEach(i=>counts[i.severity]++);
  const cards=state.items.map((it,i)=>{
   const sev=it.severity==='high'?['bg-rose-50','text-rose-700','CRITICAL']:it.severity==='medium'?['bg-amber-50','text-amber-700','MONITOR']:['bg-blue-50','text-blue-700','ADVISORY'];
@@ -772,7 +827,7 @@ function renderReport(){
  }).join('');
  const attachmentHtml='';
 document.getElementById('reportSheet').innerHTML='<div class="'+font+' min-h-[297mm]">'+
- '<div class="px-[16mm] pt-[14mm] pb-5 text-white theme-bg"><div class="flex justify-between gap-5"><div><div class="text-[8px] uppercase tracking-[.22em] font-bold opacity-75">FieldInspect Pro</div><h1 class="text-[22px] font-black mt-2 leading-tight">'+escapeHtml(s.projectName||'Inspection Report')+'</h1><p class="text-[10px] opacity-80 mt-2">'+escapeHtml(s.siteLocation||'Site location not specified')+'</p></div><div class="text-right"><div class="text-[9px] opacity-70">REPORT ID</div><div class="font-mono font-bold text-[11px] mt-1">'+escapeHtml(s.reportId||'REP-PENDING')+'</div><div class="text-[9px] opacity-70 mt-3">DATE</div><div class="font-bold text-[10px] mt-1">'+escapeHtml(s.inspectionDate||'—')+'</div></div></div></div>'+
+ '<div class="'+designClass+' px-[16mm] pt-[14mm] pb-5" style="'+designHeader+'"><div class="flex justify-between gap-5"><div><div class="text-[8px] uppercase tracking-[.22em] font-bold opacity-75">FieldInspect Pro</div><h1 class="text-[22px] font-black mt-2 leading-tight">'+escapeHtml(s.projectName||'Inspection Report')+'</h1><p class="text-[10px] opacity-80 mt-2">'+escapeHtml(s.siteLocation||'Site location not specified')+'</p></div><div class="text-right"><div class="text-[9px] opacity-70">REPORT ID</div><div class="font-mono font-bold text-[11px] mt-1">'+escapeHtml(s.reportId||'REP-PENDING')+'</div><div class="text-[9px] opacity-70 mt-3">DATE</div><div class="font-bold text-[10px] mt-1">'+escapeHtml(s.inspectionDate||'—')+'</div></div></div></div>'+
  '<div class="px-[16mm] py-5"><div class="grid grid-cols-4 border border-slate-200 rounded-xl overflow-hidden mb-5"><div class="p-3 bg-slate-50 border-r border-slate-200"><div class="text-[8px] uppercase font-bold text-slate-400">Inspector</div><div class="text-[10px] font-bold mt-1">'+escapeHtml(s.inspectorName||'—')+'</div></div><div class="p-3 bg-slate-50 border-r border-slate-200"><div class="text-[8px] uppercase font-bold text-slate-400">Client</div><div class="text-[10px] font-bold mt-1">'+escapeHtml(s.clientName||'—')+'</div></div><div class="p-3 bg-slate-50 border-r border-slate-200"><div class="text-[8px] uppercase font-bold text-slate-400">Conditions</div><div class="text-[10px] font-bold mt-1">'+escapeHtml(s.conditions||'Standard')+'</div></div><div class="p-3 bg-slate-50"><div class="text-[8px] uppercase font-bold text-slate-400">Status</div><div class="text-[10px] font-bold mt-1">'+escapeHtml(s.overallStatus||'Attention required')+'</div></div></div>'+
  '<div class="grid grid-cols-3 gap-3 mb-6"><div class="rounded-xl bg-rose-50 p-3 text-center"><div class="text-[18px] font-black text-rose-700">'+counts.high+'</div><div class="text-[8px] font-extrabold text-rose-600 uppercase">High / Critical</div></div><div class="rounded-xl bg-amber-50 p-3 text-center"><div class="text-[18px] font-black text-amber-700">'+counts.medium+'</div><div class="text-[8px] font-extrabold text-amber-600 uppercase">Medium / Monitor</div></div><div class="rounded-xl bg-blue-50 p-3 text-center"><div class="text-[18px] font-black text-blue-700">'+counts.low+'</div><div class="text-[8px] font-extrabold text-blue-600 uppercase">Low / Advisory</div></div></div>'+
  '<div class="flex items-center gap-3 mb-4"><div class="h-1 w-8 rounded theme-bg"></div><h2 class="text-[13px] font-black uppercase tracking-wider theme-accent">Inspection findings</h2></div>'+
