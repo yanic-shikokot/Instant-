@@ -1,4 +1,4 @@
-import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/+esm';
+import { createClient } from '@supabase/supabase-js';
 
 const cfg = window.FIELDINSPECT_AUTH || {};
 let fallbackSupabase = null;
