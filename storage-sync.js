@@ -181,13 +181,21 @@ async function cloneEvidence(sourceState, targetState) {
       const sourcePhoto = (sourceItem?.photos || []).find(x => x.id === photo.id);
       if (!sourcePhoto) continue;
       if (sourcePhoto.storagePath) {
-        const { data: blob, error } = await client().storage.from(BUCKET).download(sourcePhoto.storagePath);
-        if (error) throw error;
-        const newPath = u.id + '/' + targetKey + '/photo-' + photo.id + '.jpg';
-        await uploadBlob(newPath, blob, 'image/jpeg');
-        photo.storagePath = newPath;
+        try {
+          const { data: blob, error } = await client().storage.from(BUCKET).download(sourcePhoto.storagePath);
+          if (error) throw error;
+          const newPath = u.id + '/' + targetKey + '/photo-' + photo.id + '.jpg';
+          await uploadBlob(newPath, blob, 'image/jpeg');
+          photo.storagePath = newPath;
+        } catch (err) {
+          console.warn('FieldInspect: could not clone photo from cloud storage:', sourcePhoto.storagePath, err);
+        }
       } else if (sourcePhoto.data) {
-        await uploadPhoto(targetState, photo);
+        try {
+          await uploadPhoto(targetState, photo);
+        } catch (err) {
+          console.warn('FieldInspect: could not re-upload photo data during clone:', err);
+        }
       }
       photo.data = sourcePhoto.data || photo.data || '';
     }
@@ -197,13 +205,21 @@ async function cloneEvidence(sourceState, targetState) {
     const sourceAttachment = (sourceState.attachments || []).find(x => x.id === attachment.id);
     if (!sourceAttachment) continue;
     if (sourceAttachment.storagePath) {
-      const { data: blob, error } = await client().storage.from(BUCKET).download(sourceAttachment.storagePath);
-      if (error) throw error;
-      const newPath = u.id + '/' + targetKey + '/doc-' + attachment.id + '.' + ext(attachment.name, 'bin');
-      await uploadBlob(newPath, blob, attachment.type);
-      attachment.storagePath = newPath;
+      try {
+        const { data: blob, error } = await client().storage.from(BUCKET).download(sourceAttachment.storagePath);
+        if (error) throw error;
+        const newPath = u.id + '/' + targetKey + '/doc-' + attachment.id + '.' + ext(attachment.name, 'bin');
+        await uploadBlob(newPath, blob, attachment.type);
+        attachment.storagePath = newPath;
+      } catch (err) {
+        console.warn('FieldInspect: could not clone attachment from cloud storage:', sourceAttachment.storagePath, err);
+      }
     } else if (sourceAttachment.data) {
-      await uploadAttachment(targetState, attachment);
+      try {
+        await uploadAttachment(targetState, attachment);
+      } catch (err) {
+        console.warn('FieldInspect: could not re-upload attachment data during clone:', err);
+      }
     }
     attachment.data = sourceAttachment.data || attachment.data || '';
   }
@@ -236,9 +252,13 @@ async function photoDataUrls(state) {
   for (const item of (state.items || [])) {
     for (const photo of (item.photos || [])) {
       if (!photo.data && photo.storagePath) {
-        const { data: blob, error } = await client().storage.from(BUCKET).download(photo.storagePath);
-        if (error) throw error;
-        photo.data = await fileToDataUrl(blob);
+        try {
+          const { data: blob, error } = await client().storage.from(BUCKET).download(photo.storagePath);
+          if (error) throw error;
+          photo.data = await fileToDataUrl(blob);
+        } catch (err) {
+          console.warn('FieldInspect: could not load photo data URL for PDF generation:', photo.storagePath, err);
+        }
       }
     }
   }

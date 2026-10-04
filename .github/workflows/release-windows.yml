@@ -147,16 +147,17 @@ jobs:
           $size = $installer.Length
           $releaseDate = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
 
-          @"
-          version: $packageVersion
-          files:
-            - url: $installerName
-              sha512: $sha512
-              size: $size
-          path: $installerName
-          sha512: $sha512
-          releaseDate: $releaseDate
-          "@ | Set-Content -Path "release/latest.yml" -Encoding utf8
+          $latestYmlContent = @(
+            "version: $packageVersion"
+            "files:"
+            "  - url: $installerName"
+            "    sha512: $sha512"
+            "    size: $size"
+            "path: $installerName"
+            "sha512: $sha512"
+            "releaseDate: $releaseDate"
+          ) -join "`n"
+          Set-Content -Path "release/latest.yml" -Value $latestYmlContent -Encoding utf8
 
           Write-Host "Installer: $installerName ($size bytes)"
           Write-Host "Blockmap: $($blockmap.Name) ($($blockmap.Length) bytes)"

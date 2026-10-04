@@ -12,13 +12,11 @@
 window.tailwind = window.tailwind || {};
 window.tailwind.config={theme:{extend:{fontFamily:{sans:['Inter','ui-sans-serif','system-ui'],mono:['JetBrains Mono','ui-monospace','monospace'],serif:['Lora','Georgia','serif']}}}};
 </script>
-<script src="https://cdn.tailwindcss.com" defer></script>
+<link rel="stylesheet" href="/src/index.css">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Lora:wght@500;600;700&display=swap" rel="stylesheet">
-<script src="https://unpkg.com/lucide@latest" defer></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
+<script type="module" src="/src/vendor.js"></script>
 <style>
 :root{--accent:#4f46e5;--accent-rgb:79,70,229;--sheet-scale:1}
 *{box-sizing:border-box}
@@ -311,8 +309,9 @@ function setSaveStatus(t){
 }
 function escapeHtml(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function toast(msg){
- const el=document.getElementById('toast');el.textContent=msg;el.classList.remove('hidden');clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.classList.add('hidden'),4200);
+ const el=document.getElementById('toast');if(!el)return;el.textContent=msg;el.classList.remove('hidden');clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.classList.add('hidden'),4200);
 }
+window.toast=toast;
 function today(){return new Date().toISOString().slice(0,10)}
 function makeId(){const d=today().replaceAll('-','');return 'REP-'+d+'-'+Math.random().toString(36).slice(2,6).toUpperCase()}
 window.addEventListener('beforeunload',()=>{ autoSaveDraftToHistory('beforeunload'); });
@@ -513,9 +512,16 @@ function addDefect(shouldFocus=true){
  renderDefects();persist();renderReport();
  if(shouldFocus){const els=document.querySelectorAll('[data-item-title]');els[els.length-1]?.focus()}
 }
+function safeConfirm(msg){
+ try{
+  return typeof window.confirm==='function' ? window.confirm(msg) : true;
+ }catch(_){
+  return true;
+ }
+}
 function removeDefect(i){
  if(!state.items[i])return;
- if(!confirm('Delete this finding?'))return;
+ if(!safeConfirm('Delete this finding?'))return;
  state.items.splice(i,1);renderDefects();persist();renderReport();toast('Finding deleted.');
 }
 function updateItem(i,key,value){if(!state.items[i])return;state.items[i][key]=value;persist();renderReport()}
@@ -604,7 +610,7 @@ async function addPhotos(i,files){
 }
 function removePhoto(i,j){
  const photos=state.items[i]?.photos;if(!photos)return;
- if(!confirm('Remove this photo?'))return;
+ if(!safeConfirm('Remove this photo?'))return;
  photos.splice(j,1);renderDefects();persist();renderReport();
 }
 function updatePhotoCaption(i,j,value){
@@ -807,6 +813,7 @@ function mobileTab(tab){
  function readTrash(){try{const v=JSON.parse(localStorage.getItem(trashKey())||'[]');return Array.isArray(v)?v:[]}catch(e){return[]}}
  function writeTrash(v){try{localStorage.setItem(trashKey(),JSON.stringify(v.slice(0,100)));return true}catch(e){toast('Recently deleted could not be saved.');return false}}
  window.readHistory=readHistory;window.writeHistory=writeHistory;
+ window.readTrash=readTrash;window.writeTrash=writeTrash;
  function snapshotState(){return JSON.parse(JSON.stringify(state))}
  window.saveCurrentToHistory=async function(){
   try{
@@ -848,12 +855,20 @@ function mobileTab(tab){
  window.renderHistory=function(){
   const list=readHistory(),q=(document.getElementById('historySearch')?.value||'').trim().toLowerCase(),status=document.getElementById('historyStatus')?.value||'',sort=document.getElementById('historySort')?.value||'updated-desc';
   let rows=list.filter(r=>{const hay=[r.reportId,r.projectName,r.clientName,r.inspectorName,r.siteLocation,r.inspectionDate,r.overallStatus,r.status].join(' ').toLowerCase();return(!q||hay.includes(q))&&(!status||r.status===status)});
-  rows.sort((a,b)=>{if(sort==='name-asc')return String(a.projectName||'').localeCompare(String(b.projectName||''));const aK=sort.startsWith('date')?(a.inspectionDate||''):new Date(a.updatedAt||0).getTime(),bK=sort.startsWith('date')?(b.inspectionDate||''):new Date(b.updatedAt||0).getTime();return sort.endsWith('asc')?String(aK).localeCompare(String(bK)):String(bK).localeCompare(String(aK))});
+  rows.sort((a,b)=>{
+   if(sort==='name-asc')return String(a.projectName||'').localeCompare(String(b.projectName||''));
+   if(sort.startsWith('date')){
+    const aD=a.inspectionDate||'', bD=b.inspectionDate||'';
+    return sort.endsWith('asc')?aD.localeCompare(bD):bD.localeCompare(aD);
+   }
+   const aT=new Date(a.updatedAt||0).getTime(), bT=new Date(b.updatedAt||0).getTime();
+   return sort.endsWith('asc')?aT-bT:bT-aT;
+  });
   const count=document.getElementById('historyCount');if(count)count.textContent=rows.length+' report'+(rows.length===1?'':'s')+' shown · '+list.length+' saved locally';
   const el=document.getElementById('historyList');if(!el)return;
   if(!rows.length){el.innerHTML='<div class="border border-dashed border-slate-300 rounded-2xl p-10 text-center"><i data-lucide="folder-open" class="w-6 h-6 mx-auto text-slate-300"></i><div class="font-extrabold text-sm mt-3">'+(list.length?'No matching inspections':'No inspections saved yet')+'</div><p class="text-xs text-slate-500 mt-1">Use search, filters or save an inspection.</p></div>'}
   else el.innerHTML=rows.map(r=>{const sc=r.status==='completed'?'bg-emerald-50 text-emerald-700 border-emerald-200':r.status==='in-progress'?'bg-indigo-50 text-indigo-700 border-indigo-200':r.status==='archived'?'bg-slate-100 text-slate-600 border-slate-200':'bg-amber-50 text-amber-700 border-amber-200';const d=r.inspectionDate?new Date(r.inspectionDate+'T00:00:00').toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'}):'No date';return '<div class="rounded-2xl border border-slate-200 p-4 hover:border-indigo-200 hover:shadow-sm transition"><div class="flex flex-col xl:flex-row xl:items-center gap-4"><div class="flex-1 min-w-0"><div class="flex flex-wrap items-center gap-2"><span class="font-mono text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md">'+escapeHtml(r.reportId)+'</span><span class="text-[10px] font-bold border rounded-full px-2 py-1 '+sc+'">'+escapeHtml(r.status||'draft')+'</span><span class="text-[10px] text-slate-400">'+escapeHtml(d)+'</span></div><h3 class="font-extrabold text-sm mt-2 truncate">'+escapeHtml(r.projectName)+'</h3><div class="grid sm:grid-cols-3 gap-x-4 gap-y-1 mt-2 text-[11px] text-slate-500"><span><b class="text-slate-700">Client:</b> '+escapeHtml(r.clientName||'—')+'</span><span><b class="text-slate-700">Inspector:</b> '+escapeHtml(r.inspectorName||'—')+'</span><span><b class="text-slate-700">Location:</b> '+escapeHtml(r.siteLocation||'—')+'</span></div></div><div class="flex flex-wrap gap-2"><button onclick="openHistoryRecord(\''+r.id+'\')" class="px-3 py-2 rounded-lg bg-slate-900 text-white text-xs font-bold">Open & edit</button><button onclick="duplicateHistoryRecord(\''+r.id+'\')" class="px-3 py-2 rounded-lg border border-indigo-200 text-indigo-700 text-xs font-bold">Duplicate</button><button onclick="archiveHistoryRecord(\''+r.id+'\')" class="w-9 h-9 rounded-lg border border-slate-200 text-slate-600 flex items-center justify-center" title="Archive / restore"><i data-lucide="'+(r.status==='archived'?'archive-restore':'archive')+'" class="w-4 h-4"></i></button><button onclick="deleteHistoryRecord(\''+r.id+'\')" class="w-9 h-9 rounded-lg border border-rose-200 text-rose-600 flex items-center justify-center" title="Move to recently deleted"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div></div></div>'}).join('');
-  if(window.lucide?.createIcons)if(window.lucide?.createIcons)window.lucide.createIcons();
+  if(window.lucide?.createIcons)window.lucide.createIcons();
  };
  window.openHistoryRecord=async function(id){
   const r=readHistory().find(x=>x.id===id);if(!r)return;
@@ -861,7 +876,7 @@ function mobileTab(tab){
   state.meta.workflowStatus=r.status||'draft';
   if(!state.meta.storageId)state.meta.storageId=state.meta.reportId||makeId();
   persistNow();bindFields();renderDefects();
-  if(typeof applyTheme==='function')applyTheme();
+  if(typeof setTheme==='function'&&state.theme)setTheme(state.theme);
   try{if(window.FIELDINSPECT_STORAGE?.hydrate)await window.FIELDINSPECT_STORAGE.hydrate(state)}catch(e){console.error('FieldInspect evidence hydration failed:',e)}
   renderDefects();renderReport();
   if(typeof setupSignatures==='function')setTimeout(setupSignatures,0);
@@ -889,7 +904,7 @@ window.duplicateHistoryRecord=async function(id){
 
  window.archiveHistoryRecord=function(id){const list=readHistory(),i=list.findIndex(x=>x.id===id);if(i<0)return;list[i].status=list[i].status==='archived'?'draft':'archived';list[i].state.meta.workflowStatus=list[i].status;list[i].updatedAt=new Date().toISOString();if(writeHistory(list)){renderHistory();toast(list[i].status==='archived'?'Inspection archived.':'Inspection restored.');if(window.FIELDINSPECT_AUTH_USER&&window.FIELDINSPECT_SYNC_INSPECTIONS)window.FIELDINSPECT_SYNC_INSPECTIONS().catch(e=>console.error('FieldInspect archive cloud sync failed:',e))}};
  window.deleteHistoryRecord=function(id){
- const list=readHistory(),i=list.findIndex(x=>x.id===id);if(i<0||!confirm('Move this inspection to Recently Deleted?'))return;
+ const list=readHistory(),i=list.findIndex(x=>x.id===id);if(i<0||!safeConfirm('Move this inspection to Recently Deleted?'))return;
  const r=list[i],next=list.filter(x=>x.id!==id);
  if(!writeHistory(next))return;
  r.deletedAt=new Date().toISOString();
@@ -910,7 +925,7 @@ window.duplicateHistoryRecord=async function(id){
  window.restoreDeleted=function(id){const trash=readTrash(),i=trash.findIndex(x=>x.id===id);if(i<0)return;const r=trash[i];if(readHistory().some(x=>x.reportId===r.reportId)){toast('A current inspection already uses this report ID.');return}delete r.deletedAt;const list=readHistory();list.unshift(r);if(!writeHistory(list))return;trash.splice(i,1);if(!writeTrash(trash)){toast('Inspection restored locally, but Recently Deleted could not be updated.');return}renderTrash();renderHistory();toast('Inspection restored.');if(window.FIELDINSPECT_AUTH_USER&&window.FIELDINSPECT_SYNC_INSPECTIONS){window.FIELDINSPECT_SYNC_INSPECTIONS().then(result=>{if(result.ok)toast('Inspection restored and synced to cloud.');else toast('Inspection restored locally. Cloud sync will retry when available.')}).catch(error=>console.error('FieldInspect restore cloud sync failed:',error))}};
  window.purgeDeleted=async function(id){
  const trash=readTrash(),i=trash.findIndex(x=>x.id===id);if(i<0)return;
- if(!confirm('Permanently delete this inspection? This cannot be undone.'))return;
+ if(!safeConfirm('Permanently delete this inspection? This cannot be undone.'))return;
  const r=trash[i];
  try{
   if(window.FIELDINSPECT_AUTH_USER){
@@ -929,7 +944,7 @@ window.duplicateHistoryRecord=async function(id){
 
 window.purgeAllDeleted=async function(){
  const trash=readTrash();if(!trash.length){toast('Recently Deleted is already empty.');return}
- if(!confirm('Permanently delete all recently deleted inspections? This cannot be undone.'))return;
+ if(!safeConfirm('Permanently delete all recently deleted inspections? This cannot be undone.'))return;
  const btn=document.getElementById('purgeAllTrashBtn');if(btn)btn.disabled=true;
  try{
   if(window.FIELDINSPECT_AUTH_USER&&window.FIELDINSPECT_PURGE_CLOUD_DELETED){
@@ -964,6 +979,11 @@ window.FIELDINSPECT_SUPABASE = supabase;
 let authUser = null;
 let authMode = 'login';
 
+function showToast(msg){
+  if(typeof window.toast==='function') window.toast(msg);
+  else console.info('[FieldInspect Toast]', msg);
+}
+
 function authRedirectUrl(){
   if(cfg.AUTH_REDIRECT_URL) return cfg.AUTH_REDIRECT_URL;
   if(/^https?:$/i.test(location.protocol)) return location.origin + location.pathname;
@@ -996,7 +1016,7 @@ function updateAuthUI(){
   }else{
     form?.classList.remove('hidden'); tabs?.classList.remove('hidden'); profile?.classList.add('hidden');
   }
-  if(window.lucide?.createIcons)if(window.lucide?.createIcons)window.lucide.createIcons();
+  if(window.lucide?.createIcons)window.lucide.createIcons();
 }
 window.openAuth=function(mode='login'){
   document.getElementById('authModal').classList.remove('hidden');
@@ -1050,7 +1070,7 @@ window.submitAuth=async function(){
       
       
       closeAuth();
-      toast('Signed in successfully.');
+      showToast('Signed in successfully.');
     }
   }catch(e){authMessage(e.message||'Authentication failed.')}
   finally{submit.disabled=false;submit.textContent=authMode==='signup'?'Create account':'Sign in'}
@@ -1084,13 +1104,13 @@ window.saveProfile=async function(){
   if(!name){authMessage('Enter your full name.');return}
   const {data,error}=await supabase.auth.updateUser({data:{full_name:name}});
   if(error){authMessage(error.message);return}
-  authUser=data.user; authMessage('Profile updated.','success'); toast('Profile updated.');
+  authUser=data.user; authMessage('Profile updated.','success'); showToast('Profile updated.');
 };
 window.signOutUser=async function(){
   if(!supabase)return;
   const {error}=await supabase.auth.signOut();
   if(error){authMessage(error.message);return}
-  authUser=null; window.FIELDINSPECT_AUTH_USER=null; closeAuth(); updateAuthUI(); toast('Signed out.');
+  authUser=null; window.FIELDINSPECT_AUTH_USER=null; closeAuth(); updateAuthUI(); showToast('Signed out.');
 };
 window.addEventListener('DOMContentLoaded',async()=>{
   document.getElementById('authSetup')?.classList.toggle('hidden',supabaseReady);

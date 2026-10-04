@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell, session, dialog } = require('electron');
+const { app, BrowserWindow, shell, session, dialog, ipcMain } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const fs = require('fs');
 const path = require('path');
@@ -22,6 +22,43 @@ function logUpdate(message, details = '') {
   log(message, details);
 }
 
+function broadcastUpdateStatus(status, details = {}) {
+  try {
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
+      mainWindow.webContents.send('fieldinspect:update-status', { status, ...details });
+    }
+  } catch (err) {
+    log('Renderer IPC notification skipped', err?.message || String(err));
+  }
+}
+
+function registerIpcHandlers() {
+  ipcMain.handle('fieldinspect:get-version', () => app.getVersion());
+
+  ipcMain.handle('fieldinspect:check-for-updates', async () => {
+    if (!app.isPackaged) return { status: 'dev-mode', message: 'Auto-updates disabled in dev mode' };
+    try {
+      const result = await autoUpdater.checkForUpdates();
+      return { status: 'checking', updateInfo: result?.updateInfo || null };
+    } catch (error) {
+      logUpdate('Manual update check error', error?.message || String(error));
+      return { status: 'error', error: error?.message || String(error) };
+    }
+  });
+
+  ipcMain.handle('fieldinspect:install-update', () => {
+    if (!app.isPackaged) return false;
+    try {
+      isQuitting = true;
+      autoUpdater.quitAndInstall(false, true);
+      return true;
+    } catch (error) {
+      logUpdate('Manual install update error', error?.message || String(error));
+      return false;
+    }
+  });
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1500,
@@ -33,6 +70,7 @@ function createWindow() {
     show: false,
     autoHideMenuBar: true,
     webPreferences: {
+      preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
@@ -53,10 +91,12 @@ function createWindow() {
     log('Renderer process exited', JSON.stringify(details || {}));
     if (!isQuitting) {
       setTimeout(() => {
-        if (mainWindow && !mainWindow.isDestroyed()) {
+        if (!mainWindow || mainWindow.isDestroyed()) {
+          createWindow();
+        } else {
           loadApp();
         }
-      }, 250);
+      }, 500);
     }
   });
 
@@ -113,6 +153,13 @@ function configureAutoUpdates() {
     releaseType: 'release'
   });
 
+  autoUpdater.logger = {
+    info: (msg) => logUpdate('[Updater Info]', typeof msg === 'string' ? msg : JSON.stringify(msg)),
+    warn: (msg) => logUpdate('[Updater Warn]', typeof msg === 'string' ? msg : JSON.stringify(msg)),
+    error: (msg) => logUpdate('[Updater Error]', typeof msg === 'string' ? msg : JSON.stringify(msg)),
+    debug: (msg) => logUpdate('[Updater Debug]', typeof msg === 'string' ? msg : JSON.stringify(msg))
+  };
+
   autoUpdater.autoDownload = true;
   // electron-updater 6.x uses autoInstallOnAppQuit. Keep installation manual so
   // closing and immediately reopening the Windows app cannot race the NSIS installer.
@@ -122,13 +169,29 @@ function configureAutoUpdates() {
 
   logUpdate(`Updater initialized. App version=${app.getVersion()} feed=https://github.com/yanic-shikokot/Instant-/releases`);
 
-  autoUpdater.on('checking-for-update', () => logUpdate('Checking for updates'));
-  autoUpdater.on('update-available', info => logUpdate('Update available', `version=${info?.version || 'unknown'}`));
-  autoUpdater.on('update-not-available', info => logUpdate('No update available', `version=${info?.version || 'unknown'}`));
-  autoUpdater.on('download-progress', progress => logUpdate('Update download progress', `${Math.round(progress.percent || 0)}%`));
+  autoUpdater.on('checking-for-update', () => {
+    logUpdate('Checking for updates');
+    broadcastUpdateStatus('checking');
+  });
+
+  autoUpdater.on('update-available', info => {
+    logUpdate('Update available', `version=${info?.version || 'unknown'}`);
+    broadcastUpdateStatus('available', { version: info?.version });
+  });
+
+  autoUpdater.on('update-not-available', info => {
+    logUpdate('No update available', `version=${info?.version || 'unknown'}`);
+    broadcastUpdateStatus('not-available', { version: info?.version });
+  });
+
+  autoUpdater.on('download-progress', progress => {
+    logUpdate('Update download progress', `${Math.round(progress.percent || 0)}%`);
+    broadcastUpdateStatus('download-progress', { percent: Math.round(progress.percent || 0) });
+  });
 
   autoUpdater.on('update-downloaded', async info => {
     logUpdate('Update downloaded', `version=${info?.version || 'unknown'}`);
+    broadcastUpdateStatus('downloaded', { version: info?.version });
     if (isQuitting) return;
 
     const result = await dialog.showMessageBox({
@@ -152,6 +215,7 @@ function configureAutoUpdates() {
 
   autoUpdater.on('error', error => {
     logUpdate('Auto-update error', error?.stack || error?.message || String(error));
+    broadcastUpdateStatus('error', { error: error?.message || String(error) });
   });
 
   const check = async (reason = 'scheduled') => {
@@ -174,6 +238,8 @@ function configureAutoUpdates() {
 }
 
 app.whenReady().then(() => {
+  registerIpcHandlers();
+
   session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
     callback(permission === 'media');
   });

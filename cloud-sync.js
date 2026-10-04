@@ -289,15 +289,20 @@ async function sync(options={}){
   return syncPromise;
 }
 
+function safeToast(msg){
+  if(typeof window.toast==='function') window.toast(msg);
+  else console.info('[FieldInspect Toast]', msg);
+}
+
 window.FIELDINSPECT_SYNC_INSPECTIONS=sync;
 window.FIELDINSPECT_DELETE_CLOUD_INSPECTION=deleteCloudRecord;
 window.FIELDINSPECT_PURGE_CLOUD_DELETED=deleteCloudRecords;
 window.FIELDINSPECT_SYNC_NOW=async function(){
   const result=await sync({manual:true});
-  if(result.ok)toast('Cloud sync completed.');
-  else if(result.reason==='offline')toast('You are offline. Local inspections are safe and will sync automatically when you reconnect.');
-  else if(result.reason==='not-authenticated')toast('Sign in to synchronize your inspections.');
-  else toast('Cloud sync needs attention. Your local inspections are preserved.');
+  if(result.ok)safeToast('Cloud sync completed.');
+  else if(result.reason==='offline')safeToast('You are offline. Local inspections are safe and will sync automatically when you reconnect.');
+  else if(result.reason==='not-authenticated')safeToast('Sign in to synchronize your inspections.');
+  else safeToast('Cloud sync needs attention. Your local inspections are preserved.');
   return result;
 };
 window.FIELDINSPECT_CLOUD_STATUS={state:'idle',at:new Date().toISOString()};
@@ -309,7 +314,7 @@ async function boot(){
       const saveResult=await original.apply(this,arguments);
       if(user()&&saveResult?.saved){
         const result=await sync();
-        if(!result.ok)toast('Inspection saved locally. Cloud sync will retry automatically.');
+        if(!result.ok)safeToast('Inspection saved locally. Cloud sync will retry automatically.');
       }
       return saveResult;
     };
