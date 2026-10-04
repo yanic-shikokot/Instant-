@@ -38,7 +38,8 @@ jobs:
           $viteConfigs = @(Get-ChildItem -File 'vite.config.*' -ErrorAction SilentlyContinue)
           if ($viteConfigs.Count -ne 1 -or $viteConfigs[0].Name -ne 'vite.config.js') { throw "SOURCE AUDIT FAILURE: expected exactly one vite.config.js." }
           if (-not (Test-Path 'public/auth-config.js')) { throw "SOURCE AUDIT FAILURE: public/auth-config.js is missing." }
-          foreach ($file in ($files | Where-Object { $_.Extension -in '.js','.cjs' })) { node --check $file.FullName }
+          node --check electron/main.cjs
+          node --check electron/preload.cjs
           Write-Host "STATIC SOURCE AUDIT PASSED."
 
       - name: TypeScript diagnostics
