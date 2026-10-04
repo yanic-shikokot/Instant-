@@ -2,7 +2,7 @@
   "name": "fieldinspect-pro",
   "productName": "FieldInspect Pro",
   "private": true,
-  "version": "1.6.17",
+  "version": "1.6.18",
   "description": "Commercial field inspection reporting desktop application.",
   "type": "module",
   "main": "electron/main.cjs",
@@ -13,7 +13,7 @@
     "preview": "vite preview",
     "clean": "rimraf dist release",
     "lint": "tsc --noEmit",
-    "electron:dev": "electron .",
+    "electron:dev": "npm run build && electron .",
     "dist": "npm run build && electron-builder --win nsis --publish never",
     "dist:dir": "npm run build && electron-builder --win --dir --publish never",
     "release": "electron-builder --win nsis --publish always"
