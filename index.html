@@ -293,7 +293,7 @@ async function init(){
 }
 
 window.addEventListener('DOMContentLoaded',()=>{
- try{init()}catch(error){console.error('FieldInspect initialization failed:',error);setCloudStatus?.('error',error?.message||'Application initialization failed.');}
+ try{init()}catch(error){console.error('FieldInspect initialization failed:',error);}
 });
 function bindFields(){
  const map={reportId:['meta','reportId'],inspectionDate:['meta','inspectionDate'],projectName:['meta','projectName'],inspectorName:['meta','inspectorName'],clientName:['meta','clientName'],siteLocation:['meta','siteLocation'],conditions:['meta','conditions'],overallStatus:['meta','overallStatus'],workflowStatus:['meta','workflowStatus']};
