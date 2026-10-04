@@ -144,15 +144,8 @@ function createWindow() {
 function configureAutoUpdates() {
   if (!app.isPackaged) return;
 
-  // Explicitly configure the GitHub feed so the updater does not depend
-  // on a generated app-update.yml being present inside the installed app.
-  autoUpdater.setFeedURL({
-    provider: 'github',
-    owner: 'yanic-shikokot',
-    repo: 'Instant-',
-    releaseType: 'release'
-  });
-
+  // electron-builder writes the publish configuration into app-update.yml.
+  // electron-updater reads that packaged configuration for the GitHub feed.
   autoUpdater.logger = {
     info: (msg) => logUpdate('[Updater Info]', typeof msg === 'string' ? msg : JSON.stringify(msg)),
     warn: (msg) => logUpdate('[Updater Warn]', typeof msg === 'string' ? msg : JSON.stringify(msg)),
@@ -232,9 +225,11 @@ function configureAutoUpdates() {
     }
   };
 
-  // Check shortly after startup, then every 6 hours.
-  setTimeout(() => check('startup'), 8000);
-  updateCheckTimer = setInterval(() => check('scheduled'), 6 * 60 * 60 * 1000);
+  // Check shortly after startup, then periodically and whenever the app regains focus.
+  // This avoids a long wait before a newly published release becomes visible.
+  setTimeout(() => check('startup'), 2000);
+  updateCheckTimer = setInterval(() => check('scheduled'), 30 * 60 * 1000);
+  app.on('activate', () => check('app-activated'));
 }
 
 app.whenReady().then(() => {
