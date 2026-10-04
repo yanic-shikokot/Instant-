@@ -39,7 +39,7 @@ jobs:
         shell: pwsh
         run: |
           $jsonFiles = Get-ChildItem -Path . -Recurse -File -Filter *.json | Where-Object { $_.FullName -notmatch '\\(node_modules|dist|release)\\' }
-          foreach ($file in $jsonFiles) { Write-Host "Parsing $($file.FullName)"; Get-Content $file.FullName -Raw | ConvertFrom-Json | Out-Null }
+          foreach ($file in $jsonFiles) { Write-Host "Parsing $($file.FullName)"; node -e "JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'))" -- "$($file.FullName)" }
           Write-Host "JSON SYNTAX AUDIT PASSED."
 
       - name: Vite configuration audit
