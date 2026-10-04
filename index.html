@@ -5,16 +5,17 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>FieldInspect Pro — Field Inspection Reports</title>
 <meta name="description" content="Commercial field inspection reporting and A4 PDF reporting platform.">
-<script src="https://cdn.tailwindcss.com"></script>
+<meta name="application-version" content="1.6.13">
+<script src="https://cdn.tailwindcss.com" defer></script>
 <script>
 tailwind.config={theme:{extend:{fontFamily:{sans:['Inter','ui-sans-serif','system-ui'],mono:['JetBrains Mono','ui-monospace','monospace'],serif:['Lora','Georgia','serif']}}}};
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Lora:wght@500;600;700&display=swap" rel="stylesheet">
-<script src="https://unpkg.com/lucide@latest"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://unpkg.com/lucide@latest" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
 <style>
 :root{--accent:#4f46e5;--accent-rgb:79,70,229;--sheet-scale:1}
 *{box-sizing:border-box}
@@ -77,7 +78,7 @@ if (!window.FIELDINSPECT_AUTH?.SUPABASE_URL || !window.FIELDINSPECT_AUTH?.SUPABA
 </script>
 </head>
 <body>
-<div id="app" class="min-h-screen flex flex-col">
+<div id="app" class="min-h-screen flex flex-col" data-fieldinspect-version="1.6.13">
 <header class="sticky top-0 z-50 bg-slate-950 text-white border-b border-white/10 shadow-lg">
  <div class="max-w-[1920px] mx-auto w-full px-3 sm:px-5 py-2.5 flex flex-wrap items-center gap-2 justify-between">
   <div class="flex items-center gap-3 shrink-0">
@@ -318,7 +319,7 @@ async function init(){
  if(!state.meta.reportId)state.meta.reportId=makeId();
  if(!state.meta.storageId)state.meta.storageId=state.meta.reportId;
  if(!state.meta.inspectionDate)state.meta.inspectionDate=today();
- bindFields();renderThemes();renderDefects();renderReport();setupSignatures();lucide.createIcons();
+ bindFields();renderThemes();renderDefects();renderReport();setupSignatures();if(window.lucide?.createIcons)window.lucide.createIcons();
  if(window.FIELDINSPECT_STORAGE?.hydrate){try{await window.FIELDINSPECT_STORAGE.hydrate(state);renderDefects();renderReport()}catch(e){console.error('FieldInspect evidence hydration failed:',e)}}
  window.addEventListener('resize',fitPreview);
  fitPreview();
@@ -543,7 +544,7 @@ function handleNotesKey(e,i){
 }
 function renderDefects(){
  const wrap=document.getElementById('defects');
- if(!state.items.length){wrap.innerHTML='<div class="border border-dashed border-slate-300 rounded-xl p-8 text-center"><i data-lucide="scan-search" class="w-8 h-8 mx-auto text-slate-300"></i><div class="font-bold text-sm mt-2">No findings yet</div><p class="text-xs text-slate-400 mt-1">Add your first inspection finding.</p><button onclick="addDefect()" class="mt-3 theme-accent text-xs font-bold">+ Add finding</button></div>';lucide.createIcons();return}
+ if(!state.items.length){wrap.innerHTML='<div class="border border-dashed border-slate-300 rounded-xl p-8 text-center"><i data-lucide="scan-search" class="w-8 h-8 mx-auto text-slate-300"></i><div class="font-bold text-sm mt-2">No findings yet</div><p class="text-xs text-slate-400 mt-1">Add your first inspection finding.</p><button onclick="addDefect()" class="mt-3 theme-accent text-xs font-bold">+ Add finding</button></div>';if(window.lucide?.createIcons)window.lucide.createIcons();return}
  wrap.innerHTML=state.items.map((it,i)=>{
   it.photos=Array.isArray(it.photos)?it.photos:[];
   return '<article class="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-3" data-card="'+i+'">'+
@@ -555,7 +556,7 @@ function renderDefects(){
    '<div class="grid grid-cols-2 sm:grid-cols-3 gap-2">'+it.photos.map((p,j)=>'<div class="relative"><div class="absolute top-1 left-1 z-10 px-1.5 py-0.5 rounded bg-slate-950/80 text-white text-[9px] font-bold">Photo '+(j+1)+'</div><img src="'+p.data+'" class="photo-thumb w-full rounded-lg border border-slate-200"><button onclick="removePhoto('+i+','+j+')" class="absolute -top-1 -right-1 w-5 h-5 bg-slate-900 text-white rounded-full text-[10px]">×</button><input value="'+escapeHtml(p.caption||'')+'" oninput="updatePhotoCaption('+i+','+j+',this.value)" class="w-full mt-1 text-[10px] border border-slate-200 rounded-md px-2 py-1" placeholder="Photo caption"></div>').join('')+'</div>'+
   '</article>'
  }).join('');
- lucide.createIcons();
+ if(window.lucide?.createIcons)window.lucide.createIcons();
 }
 async function addPhotos(i,files){
  const item=state.items[i];
@@ -849,7 +850,7 @@ function mobileTab(tab){
   const el=document.getElementById('historyList');if(!el)return;
   if(!rows.length){el.innerHTML='<div class="border border-dashed border-slate-300 rounded-2xl p-10 text-center"><i data-lucide="folder-open" class="w-6 h-6 mx-auto text-slate-300"></i><div class="font-extrabold text-sm mt-3">'+(list.length?'No matching inspections':'No inspections saved yet')+'</div><p class="text-xs text-slate-500 mt-1">Use search, filters or save an inspection.</p></div>'}
   else el.innerHTML=rows.map(r=>{const sc=r.status==='completed'?'bg-emerald-50 text-emerald-700 border-emerald-200':r.status==='in-progress'?'bg-indigo-50 text-indigo-700 border-indigo-200':r.status==='archived'?'bg-slate-100 text-slate-600 border-slate-200':'bg-amber-50 text-amber-700 border-amber-200';const d=r.inspectionDate?new Date(r.inspectionDate+'T00:00:00').toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'}):'No date';return '<div class="rounded-2xl border border-slate-200 p-4 hover:border-indigo-200 hover:shadow-sm transition"><div class="flex flex-col xl:flex-row xl:items-center gap-4"><div class="flex-1 min-w-0"><div class="flex flex-wrap items-center gap-2"><span class="font-mono text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md">'+escapeHtml(r.reportId)+'</span><span class="text-[10px] font-bold border rounded-full px-2 py-1 '+sc+'">'+escapeHtml(r.status||'draft')+'</span><span class="text-[10px] text-slate-400">'+escapeHtml(d)+'</span></div><h3 class="font-extrabold text-sm mt-2 truncate">'+escapeHtml(r.projectName)+'</h3><div class="grid sm:grid-cols-3 gap-x-4 gap-y-1 mt-2 text-[11px] text-slate-500"><span><b class="text-slate-700">Client:</b> '+escapeHtml(r.clientName||'—')+'</span><span><b class="text-slate-700">Inspector:</b> '+escapeHtml(r.inspectorName||'—')+'</span><span><b class="text-slate-700">Location:</b> '+escapeHtml(r.siteLocation||'—')+'</span></div></div><div class="flex flex-wrap gap-2"><button onclick="openHistoryRecord(\''+r.id+'\')" class="px-3 py-2 rounded-lg bg-slate-900 text-white text-xs font-bold">Open & edit</button><button onclick="duplicateHistoryRecord(\''+r.id+'\')" class="px-3 py-2 rounded-lg border border-indigo-200 text-indigo-700 text-xs font-bold">Duplicate</button><button onclick="archiveHistoryRecord(\''+r.id+'\')" class="w-9 h-9 rounded-lg border border-slate-200 text-slate-600 flex items-center justify-center" title="Archive / restore"><i data-lucide="'+(r.status==='archived'?'archive-restore':'archive')+'" class="w-4 h-4"></i></button><button onclick="deleteHistoryRecord(\''+r.id+'\')" class="w-9 h-9 rounded-lg border border-rose-200 text-rose-600 flex items-center justify-center" title="Move to recently deleted"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div></div></div>'}).join('');
-  if(window.lucide?.createIcons)lucide.createIcons();
+  if(window.lucide?.createIcons)if(window.lucide?.createIcons)window.lucide.createIcons();
  };
  window.openHistoryRecord=async function(id){
   const r=readHistory().find(x=>x.id===id);if(!r)return;
@@ -951,7 +952,7 @@ window.purgeAllDeleted=async function(){
 </script>
 
 <script type="module">
-import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/+esm';
+import { createClient } from '@supabase/supabase-js';
 
 const cfg = window.FIELDINSPECT_AUTH || {};
 const supabaseReady = Boolean(cfg.SUPABASE_URL && cfg.SUPABASE_PUBLISHABLE_KEY);
@@ -992,7 +993,7 @@ function updateAuthUI(){
   }else{
     form?.classList.remove('hidden'); tabs?.classList.remove('hidden'); profile?.classList.add('hidden');
   }
-  if(window.lucide?.createIcons)lucide.createIcons();
+  if(window.lucide?.createIcons)if(window.lucide?.createIcons)window.lucide.createIcons();
 }
 window.openAuth=function(mode='login'){
   document.getElementById('authModal').classList.remove('hidden');
@@ -1107,5 +1108,5 @@ window.addEventListener('DOMContentLoaded',async()=>{
 <script type="module" src="./storage-sync.js"></script>
 <script type="module" src="./cloud-sync.js"></script>
 </body>
-<!-- FieldInspect release marker: New workspace reset is persistence-independent. 2026-10-03 -->
+<!-- FieldInspect release marker: v1.6.13 startup hardening. 2026-10-04 -->
 </html>
