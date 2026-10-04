@@ -35,26 +35,15 @@ jobs:
           if ($bad) { $bad | Format-List; throw "SOURCE AUDIT FAILURE: invalid Supabase package capitalization found." }
           Write-Host "CAPITALIZATION AUDIT PASSED."
 
-      - name: JSON syntax audit
+      - name: JSON and configuration audit
         shell: pwsh
         run: |
           $jsonFiles = Get-ChildItem -Path . -Recurse -File -Filter *.json | Where-Object { $_.FullName -notmatch '\\(node_modules|dist|release)\\' }
           foreach ($file in $jsonFiles) { Write-Host "Parsing $($file.FullName)"; Get-Content $file.FullName -Raw | ConvertFrom-Json | Out-Null }
-          Write-Host "JSON SYNTAX AUDIT PASSED."
-
-      - name: Vite configuration audit
-        shell: pwsh
-        run: |
           $viteConfigs = @(Get-ChildItem -Path . -File -Filter 'vite.config.*' -ErrorAction SilentlyContinue)
-          Write-Host ("Vite configs found: " + (($viteConfigs | ForEach-Object Name) -join ', '))
-          if ($viteConfigs.Count -ne 1 -or $viteConfigs[0].Name -ne 'vite.config.js') { throw "VITE CONFIG AUDIT FAILURE: expected exactly one vite.config.js." }
-          Write-Host "VITE CONFIG AUDIT PASSED."
-
-      - name: Static asset audit
-        shell: pwsh
-        run: |
-          if (-not (Test-Path 'public/auth-config.js')) { throw "STATIC ASSET AUDIT FAILURE: public/auth-config.js is missing." }
-          Write-Host "STATIC ASSET AUDIT PASSED."
+          if ($viteConfigs.Count -ne 1 -or $viteConfigs[0].Name -ne 'vite.config.js') { throw "SOURCE AUDIT FAILURE: expected exactly one vite.config.js." }
+          if (-not (Test-Path 'public/auth-config.js')) { throw "SOURCE AUDIT FAILURE: public/auth-config.js is missing." }
+          Write-Host "JSON/CONFIG AUDIT PASSED."
 
       - name: Electron syntax audit
         shell: pwsh
