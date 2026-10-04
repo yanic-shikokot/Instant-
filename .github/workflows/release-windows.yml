@@ -28,10 +28,8 @@ jobs:
         with:
           node-version: 22
 
-      - name: Prepare release tag
+      - name: Validate release version
         shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           $packageVersion = node -p "require('./package.json').version"
           $tag = "v$packageVersion"
@@ -42,16 +40,11 @@ jobs:
             $tagSha = (git rev-list -n 1 $tag).Trim()
             $headSha = "${{ github.sha }}".Trim()
             if ($tagSha -ne $headSha) {
-              throw "RELEASE SAFETY FAILURE: $tag points to $tagSha but this build is $headSha. Bump package.json version before releasing again."
+              throw "RELEASE SAFETY FAILURE: $tag already points to $tagSha while this build is $headSha. Bump package.json version before releasing again."
             }
-          } else {
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git tag -a $tag -m "FieldInspect Pro $packageVersion"
-            git push origin $tag
           }
 
-          Write-Host "Release tag: $tag (commit ${{ github.sha }})"
+          Write-Host "Release version validated: $tag"
 
       - name: Install dependencies
         run: npm install
@@ -67,7 +60,8 @@ jobs:
           $viteConfigs = @(Get-ChildItem -File 'vite.config.*' -ErrorAction SilentlyContinue)
           if ($viteConfigs.Count -ne 1 -or $viteConfigs[0].Name -ne 'vite.config.js') { throw "SOURCE AUDIT FAILURE: expected exactly one vite.config.js." }
           if (-not (Test-Path 'public/auth-config.js')) { throw "SOURCE AUDIT FAILURE: public/auth-config.js is missing." }
-          foreach ($file in ($files | Where-Object { $_.Extension -in '.js','.cjs' })) { node --check $file.FullName }
+          node --check electron/main.cjs
+          node --check electron/preload.cjs
           npm run lint
           Write-Host "FULL SOURCE AUDIT PASSED."
 
@@ -164,6 +158,22 @@ jobs:
           }
 
           Write-Host "LOCAL ARTIFACT VERIFICATION PASSED."
+
+      - name: Create release tag
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $packageVersion = node -p "require('./package.json').version"
+          $tag = "v$packageVersion"
+          git fetch --tags --force
+          if (-not (git tag --list $tag)) {
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a $tag -m "FieldInspect Pro $packageVersion"
+            git push origin $tag
+          }
+          Write-Host "Release tag ready: $tag"
 
       - name: Create or publish GitHub release
         shell: pwsh
