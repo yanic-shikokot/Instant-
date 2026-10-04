@@ -2,20 +2,20 @@
   "name": "fieldinspect-pro",
   "productName": "FieldInspect Pro",
   "private": true,
-  "version": "1.6.12",
+  "version": "1.6.13",
   "description": "Commercial field inspection reporting desktop application.",
   "type": "module",
   "main": "electron/main.cjs",
   "author": "Yanic Shikokot",
   "scripts": {
     "dev": "vite --port=3001 --host=0.0.0.0",
-    "build": "vite build",
+    "build": "vite build --base=./",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js release",
     "lint": "tsc --noEmit",
     "electron:dev": "electron .",
-    "dist": "electron-builder --win nsis --publish never",
-    "dist:dir": "electron-builder --win --dir --publish never",
+    "dist": "npm run build && electron-builder --win nsis --publish never",
+    "dist:dir": "npm run build && electron-builder --win --dir --publish never",
     "release": "electron-builder --win nsis --publish always"
   },
   "dependencies": {
@@ -29,7 +29,8 @@
     "express": "^4.21.2",
     "dotenv": "^17.2.3",
     "motion": "^12.23.24",
-    "electron-updater": "6.8.10"
+    "electron-updater": "6.8.10",
+    "@supabase/supabase-js": "^2.117.2"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",
@@ -51,10 +52,7 @@
     "productName": "FieldInspect Pro",
     "asar": true,
     "files": [
-      "index.html",
-      "auth-config.js",
-      "cloud-sync.js",
-      "storage-sync.js",
+      "dist/**/*",
       "electron/**/*",
       "package.json"
     ],
