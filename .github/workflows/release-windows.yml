@@ -56,6 +56,21 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Full source audit
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem -Recurse -File -Include *.js,*.cjs,*.jsx,*.ts,*.tsx,*.html,*.json | Where-Object { $_.FullName -notmatch '\\(node_modules|dist|release)\\' }
+          $bad = $files | Select-String -Pattern '@Supabase/supabase-js|@supabase/Supabase-js|@SUPABASE/supabase-js|@SUPABASE/SUPABASE-JS'
+          if ($bad) { $bad | Format-List; throw "SOURCE AUDIT FAILURE: invalid Supabase package capitalization found." }
+          $jsonFiles = $files | Where-Object { $_.Extension -eq '.json' }
+          foreach ($file in $jsonFiles) { Get-Content $file.FullName -Raw | ConvertFrom-Json | Out-Null }
+          $viteConfigs = @(Get-ChildItem -File 'vite.config.*' -ErrorAction SilentlyContinue)
+          if ($viteConfigs.Count -ne 1 -or $viteConfigs[0].Name -ne 'vite.config.js') { throw "SOURCE AUDIT FAILURE: expected exactly one vite.config.js." }
+          if (-not (Test-Path 'public/auth-config.js')) { throw "SOURCE AUDIT FAILURE: public/auth-config.js is missing." }
+          foreach ($file in ($files | Where-Object { $_.Extension -in '.js','.cjs' })) { node --check $file.FullName }
+          npm run lint
+          Write-Host "FULL SOURCE AUDIT PASSED."
+
       - name: Build Windows installer without publishing
         run: npm run dist
 
@@ -76,6 +91,15 @@ jobs:
           if ($html -notmatch 'workspace-preview') { throw "SMOKE TEST FAILURE: preview layout class is missing." }
           if ($html -match 'cdn\.jsdelivr\.net/npm/@supabase/supabase-js') {
             throw "SMOKE TEST FAILURE: Supabase is still loaded from a remote CDN."
+          }
+          if ($html -notmatch 'window\.tailwind\s*=\s*window\.tailwind\s*\|\|\s*\{\}') {
+            throw "SMOKE TEST FAILURE: Tailwind configuration is not initialized before the deferred CDN script."
+          }
+          if ($html -notmatch 'src="./auth-config\.js"') {
+            throw "SMOKE TEST FAILURE: auth-config.js is not referenced as a packaged static asset."
+          }
+          if ($main -notmatch 'autoInstallOnAppQuit\s*=\s*false') {
+            throw "SMOKE TEST FAILURE: updater install-on-quit race protection is missing."
           }
 
           foreach ($tag in @('html','head','body','main','script')) {
