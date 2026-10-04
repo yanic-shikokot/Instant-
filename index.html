@@ -8,6 +8,14 @@
 <meta property="og:title" content="FieldInspect Pro - Photo & PDF Report Generator">
 <meta property="og:description" content="A fast, field-ready photo and inspection report generator for technicians, home inspectors, and contractors with live preview and instant multi-page PDF export.">
 <meta name="application-version" content="1.6.17">
+<meta name="theme-color" content="#020617">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="FieldInspect">
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="icon" type="image/svg+xml" href="/icon.svg">
 <script>
 window.tailwind = window.tailwind || {};
 window.tailwind.config={theme:{extend:{fontFamily:{sans:['Inter','ui-sans-serif','system-ui'],mono:['JetBrains Mono','ui-monospace','monospace'],serif:['Lora','Georgia','serif']}}}};
@@ -20,22 +28,20 @@ window.tailwind.config={theme:{extend:{fontFamily:{sans:['Inter','ui-sans-serif'
 <style>
 :root{--accent:#4f46e5;--accent-rgb:79,70,229;--sheet-scale:1}
 *{box-sizing:border-box}
-html,body{margin:0;min-height:100%;font-family:Inter,ui-sans-serif,system-ui,sans-serif}
+html,body{margin:0;height:100%;min-height:100%;font-family:Inter,ui-sans-serif,system-ui,sans-serif;overflow:hidden}
 body{background:#f1f5f9;color:#0f172a}
 button,input,textarea,select{font:inherit}
 button{cursor:pointer}
-.workspace-main{display:flex;flex:1;min-height:0;width:100%;overflow:hidden}
-.workspace-editor{flex:0 0 47%;min-width:0;min-height:0;overflow-y:auto;background:#fff;border-right:1px solid #e2e8f0}
-.workspace-preview{flex:1 1 53%;min-width:0;min-height:0;display:flex;overflow:hidden;background:#f1f5f9}
-.workspace-preview-inner{display:flex;flex:1 1 auto;min-width:0;min-height:0;width:100%;flex-direction:column}
-.report-viewport{width:100%;min-width:0;min-height:0;flex:1 1 auto;overflow:auto;padding:18px 14px 40px}
-.report-scale{width:794px;min-width:794px;margin:0 auto;transform-origin:top center;transform:scale(var(--sheet-scale));}
-.report-sheet{width:794px;min-height:1123px;background:#fff;color:#0f172a;box-shadow:0 18px 45px rgba(15,23,42,.16);overflow:hidden}
-@media(max-width:1023px){
- .workspace-main{display:block;overflow:hidden}
- .workspace-editor,.workspace-preview{width:100%;height:calc(100vh - 61px);min-height:0}
- .workspace-editor{border-right:0}
- .workspace-preview{display:flex}
+.workspace-main{display:flex;flex:1 1 0%;min-height:0;min-width:0;width:100%;height:calc(100vh - 58px);overflow:hidden;flex-direction:row}
+.workspace-editor{flex:1 1 50%;width:50%;min-width:0;min-height:0;height:100%;overflow-y:auto;background:#fff;border-right:1px solid #e2e8f0}
+.workspace-preview{flex:1 1 50%;width:50%;min-width:0;min-height:0;height:100%;display:flex;flex-direction:column;overflow:hidden;background:#f8fafc}
+.workspace-preview-inner{display:flex;flex:1 1 auto;min-width:0;min-height:0;width:100%;height:100%;flex-direction:column}
+.report-viewport{width:100%;min-width:0;min-height:0;flex:1 1 auto;height:100%;overflow-y:auto;overflow-x:hidden;padding:18px 14px 40px}
+.report-scale{width:794px;min-width:794px;margin:0 auto;transform-origin:top center;transform:scale(var(--sheet-scale));will-change:transform}
+.report-sheet{width:794px;min-height:1123px;background:#fff;color:#0f172a;box-shadow:0 18px 45px rgba(15,23,42,.16);overflow:hidden;border-radius:4px}
+@media(max-width:639px){
+ .workspace-main{flex-direction:column}
+ .workspace-editor,.workspace-preview{width:100%;flex:1 1 100%;border-right:0}
  .report-viewport{padding:10px 4px 30px}
 }
 .pdf-font-sans{font-family:Inter,Arial,sans-serif}
@@ -79,8 +85,8 @@ if (!window.FIELDINSPECT_AUTH?.SUPABASE_URL || !window.FIELDINSPECT_AUTH?.SUPABA
 </script>
 </head>
 <body>
-<div id="app" class="min-h-screen flex flex-col" data-fieldinspect-version="1.6.17">
-<header class="sticky top-0 z-50 bg-slate-950 text-white border-b border-white/10 shadow-lg">
+<div id="app" class="h-screen min-h-screen flex flex-col overflow-hidden" data-fieldinspect-version="1.6.17">
+<header class="shrink-0 sticky top-0 z-50 bg-slate-950 text-white border-b border-white/10 shadow-lg">
  <div class="max-w-[1920px] mx-auto w-full px-3 sm:px-5 py-2.5 flex flex-wrap items-center gap-2 justify-between">
   <div class="flex items-center gap-3 shrink-0">
    <div class="w-9 h-9 rounded-xl flex items-center justify-center shadow-lg" style="background:var(--accent)"><i data-lucide="clipboard-check" class="w-5 h-5"></i></div>
@@ -88,21 +94,21 @@ if (!window.FIELDINSPECT_AUTH?.SUPABASE_URL || !window.FIELDINSPECT_AUTH?.SUPABA
   </div>
   <div class="flex items-center gap-1.5 order-2 sm:order-3">
    <button onclick="newInspection()" class="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold flex items-center gap-1.5"><i data-lucide="plus" class="w-3.5 h-3.5"></i>New</button><button onclick="window.saveCurrentToHistory?.()" class="px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 border border-indigo-500 text-xs font-bold flex items-center gap-1.5" title="Save the current inspection to History"><i data-lucide="save" class="w-3.5 h-3.5"></i>Save</button><button onclick="openHistory()" class="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold flex items-center gap-1.5"><i data-lucide="history" class="w-3.5 h-3.5"></i>History</button><button onclick="window.FIELDINSPECT_SYNC_NOW?.()" class="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold flex items-center gap-1.5" title="Synchronize inspections with the cloud"><i data-lucide="cloud-upload" class="w-3.5 h-3.5"></i><span id="cloudSyncText">Cloud ready</span></button>
-   <button id="accountButton" onclick="openAuth()" class="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold flex items-center gap-1.5"><i data-lucide="log-in" class="w-3.5 h-3.5"></i><span class="hidden sm:inline">Sign in</span></button><button onclick="loadSample()" class="hidden md:flex px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold items-center gap-1.5"><i data-lucide="sparkles" class="w-3.5 h-3.5 text-amber-300"></i>Sample</button>
+   <button id="accountButton" onclick="openAuth()" class="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold flex items-center gap-1.5"><i data-lucide="log-in" class="w-3.5 h-3.5"></i><span class="hidden sm:inline">Sign in</span></button><button id="installAppBtn" onclick="installPWA()" class="hidden px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 border border-emerald-500 text-xs font-bold text-white flex items-center gap-1.5 shadow-sm" title="Install FieldInspect Pro on your device"><i data-lucide="download" class="w-3.5 h-3.5"></i><span class="hidden sm:inline">Install</span></button><button onclick="loadSample()" class="hidden md:flex px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold items-center gap-1.5"><i data-lucide="sparkles" class="w-3.5 h-3.5 text-amber-300"></i>Sample</button>
    <button onclick="handlePdf()" class="px-3 py-1.5 rounded-lg text-xs font-bold text-white shadow-lg flex items-center gap-1.5" style="background:var(--accent)"><i data-lucide="file-down" class="w-4 h-4"></i>Download PDF</button>
   </div>
  </div>
 </header>
 
-<div class="lg:hidden sticky top-[61px] z-40 bg-slate-900/95 backdrop-blur border-b border-white/10 p-2">
+<div class="sm:hidden shrink-0 sticky top-[57px] z-40 bg-slate-900/95 backdrop-blur border-b border-white/10 p-2">
  <div class="grid grid-cols-2 bg-slate-800 p-1 rounded-xl">
   <button id="tabEditor" onclick="mobileTab('editor')" class="py-2 rounded-lg bg-indigo-600 text-white text-xs font-bold">Edit report</button>
   <button id="tabPreview" onclick="mobileTab('preview')" class="py-2 rounded-lg text-slate-300 text-xs font-bold">Preview</button>
  </div>
 </div>
 
-<main class="workspace-main max-w-[1920px] mx-auto">
-<section id="editorPanel" class="workspace-editor">
+<main class="workspace-main flex-1 min-h-0 w-full flex flex-row overflow-hidden max-w-[1920px] mx-auto">
+<section id="editorPanel" class="workspace-editor w-full sm:w-1/2 flex-1 min-w-0 h-full overflow-y-auto bg-white border-r border-slate-200">
  <div class="p-4 sm:p-6 space-y-5">
   <div class="flex items-center justify-between border-b border-slate-200 pb-3">
    <div><h2 class="font-extrabold text-lg">Inspection workspace</h2><p class="text-xs text-slate-500 mt-0.5">Build evidence-rich reports and export A4 PDFs.</p></div>
@@ -156,8 +162,8 @@ if (!window.FIELDINSPECT_AUTH?.SUPABASE_URL || !window.FIELDINSPECT_AUTH?.SUPABA
  </div>
 </section>
 
-<section id="previewPanel" class="workspace-preview hidden lg:flex">
- <div class="workspace-preview-inner">
+<section id="previewPanel" class="workspace-preview w-full sm:w-1/2 flex-1 min-w-0 h-full flex flex-col overflow-hidden bg-slate-100">
+ <div class="workspace-preview-inner h-full flex flex-col">
   <div class="shrink-0 px-4 sm:px-5 py-3 bg-white border-b border-slate-200 flex items-center justify-between gap-3">
    <div>
     <div class="flex items-center gap-2">
@@ -171,7 +177,7 @@ if (!window.FIELDINSPECT_AUTH?.SUPABASE_URL || !window.FIELDINSPECT_AUTH?.SUPABA
     <i data-lucide="scan" class="w-3.5 h-3.5"></i>Fit
    </button>
   </div>
-  <div class="report-viewport flex-1 min-h-0 overflow-auto">
+  <div class="report-viewport flex-1 min-h-0 h-full overflow-y-auto overflow-x-hidden">
    <div id="reportScale" class="report-scale">
     <div id="reportSheet" class="report-sheet"></div>
    </div>
@@ -200,6 +206,7 @@ if (!window.FIELDINSPECT_AUTH?.SUPABASE_URL || !window.FIELDINSPECT_AUTH?.SUPABA
 </div>
 
 <div id="toast" class="fixed bottom-5 right-5 z-[100] hidden max-w-sm rounded-xl bg-slate-950 text-white shadow-2xl px-4 py-3 text-xs font-semibold"></div>
+<div id="offlineBanner" class="hidden fixed bottom-5 left-5 z-[99] flex items-center gap-2 rounded-xl bg-amber-600 text-white shadow-2xl px-3.5 py-2 text-xs font-bold pointer-events-none transition-all"><span class="h-2 w-2 rounded-full bg-white animate-pulse"></span><span>Offline Mode — Cached workspace active</span></div>
 
 <!-- INSPECTION HISTORY -->
 <div id="historyModal" class="fixed inset-0 z-[85] hidden bg-slate-950/70 backdrop-blur-sm p-3 sm:p-6 overflow-y-auto">
@@ -281,11 +288,32 @@ function persist(){
  clearTimeout(saveTimer);
  setSaveStatus('Saving…');
  saveTimer=setTimeout(()=>{
+  let localSaved=false;
   try{
    localStorage.setItem(STORAGE+':draft',JSON.stringify(stateForPersistence(state)));
-   setSaveStatus('Saved · '+new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}));
+   localSaved=true;
   }catch(e){
-   console.error('FieldInspect draft save failed:',e);
+   console.warn('FieldInspect localStorage quota exceeded or error:',e);
+  }
+
+  // Always back up to IndexedDB for quota-resilient storage
+  if(window.FIELDINSPECT_STORAGE?.saveActiveState){
+   window.FIELDINSPECT_STORAGE.saveActiveState(state)
+    .then(idbSaved=>{
+     if(idbSaved || localSaved){
+      setSaveStatus('Saved · '+new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}));
+     }else{
+      setSaveStatus('Save failed');
+      toast('Draft could not be saved locally. Check available browser storage.');
+     }
+    })
+    .catch(()=>{
+     if(localSaved) setSaveStatus('Saved');
+     else setSaveStatus('Save failed');
+    });
+  }else if(localSaved){
+   setSaveStatus('Saved · '+new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}));
+  }else{
    setSaveStatus('Save failed');
    toast('Draft could not be saved locally. Check available browser storage.');
   }
@@ -293,16 +321,25 @@ function persist(){
 }
 function persistNow(){
  clearTimeout(saveTimer);
+ let localSaved=false;
  try{
   localStorage.setItem(STORAGE+':draft',JSON.stringify(stateForPersistence(state)));
+  localSaved=true;
+ }catch(e){
+  console.warn('FieldInspect immediate localStorage save error (quota exceeded):',e);
+ }
+
+ if(window.FIELDINSPECT_STORAGE?.saveActiveState){
+  window.FIELDINSPECT_STORAGE.saveActiveState(state).catch(e=>console.error('IDB persistNow failed:',e));
+ }
+
+ if(localSaved || window.FIELDINSPECT_STORAGE?.saveActiveState){
   setSaveStatus('Saved');
   return true;
- }catch(e){
-  console.error('FieldInspect immediate draft save failed:',e);
-  setSaveStatus('Save failed');
-  toast('Draft could not be saved locally. Check available browser storage.');
-  return false;
  }
+ setSaveStatus('Save failed');
+ toast('Draft could not be saved locally. Check available browser storage.');
+ return false;
 }
 function setSaveStatus(t){
  const el=document.getElementById('saveStatus'); if(el){el.textContent=t;el.className='text-[10px] font-bold '+(t.startsWith('Saved')?'text-emerald-700 bg-emerald-50 border border-emerald-200':'text-amber-700 bg-amber-50 border border-amber-200')+' rounded-full px-2 py-1';}
@@ -323,8 +360,83 @@ async function init(){
  if(!state.meta.inspectionDate)state.meta.inspectionDate=today();
  bindFields();renderThemes();renderDefects();renderReport();setupSignatures();if(window.lucide?.createIcons)window.lucide.createIcons();
  if(window.FIELDINSPECT_STORAGE?.hydrate){try{await window.FIELDINSPECT_STORAGE.hydrate(state);renderDefects();renderReport()}catch(e){console.error('FieldInspect evidence hydration failed:',e)}}
- window.addEventListener('resize',fitPreview);
+ if(window.FIELDINSPECT_STORAGE?.loadActiveState){
+  try{
+   const idbState=await window.FIELDINSPECT_STORAGE.loadActiveState();
+   if(idbState && (!state.items?.length && Array.isArray(idbState.items) && idbState.items.length)){
+    state={...structuredClone(DEFAULT_STATE),...idbState};
+    bindFields();renderThemes();renderDefects();renderReport();
+   }
+  }catch(e){console.warn('FieldInspect IndexedDB draft restore note:',e)}
+ }
+ window.addEventListener('resize',()=>{
+  if(window.innerWidth>=640){
+   document.getElementById('editorPanel')?.classList.remove('hidden');
+   document.getElementById('previewPanel')?.classList.remove('hidden');
+  }
+  fitPreview();
+ });
+ if(window.ResizeObserver&&!window.__previewResizeObserver){
+  const ro=new ResizeObserver(()=>fitPreview());
+  const vp=document.querySelector('.report-viewport');
+  if(vp){ro.observe(vp);window.__previewResizeObserver=ro}
+ }
  fitPreview();
+ setTimeout(fitPreview,100);
+ setTimeout(fitPreview,400);
+ updateNetworkStatus();
+}
+
+function updateNetworkStatus(){
+ const isOnline=typeof navigator!=='undefined'?navigator.onLine:true;
+ const banner=document.getElementById('offlineBanner');
+ const cloudText=document.getElementById('cloudSyncText');
+ if(banner)banner.classList.toggle('hidden',isOnline);
+ if(!isOnline){
+  if(cloudText)cloudText.textContent='Offline (Cached)';
+ }else if(cloudText&&cloudText.textContent.includes('Offline')){
+  cloudText.textContent='Cloud ready';
+ }
+}
+window.addEventListener('online',()=>{ updateNetworkStatus(); if(typeof window.toast==='function')window.toast('Device back online. Synchronizing…'); });
+window.addEventListener('offline',()=>{ updateNetworkStatus(); if(typeof window.toast==='function')window.toast('Device is offline. All inspections saved locally.'); });
+
+let deferredInstallPrompt=null;
+window.addEventListener('beforeinstallprompt',e=>{
+ e.preventDefault();
+ deferredInstallPrompt=e;
+ const btn=document.getElementById('installAppBtn');
+ if(btn)btn.classList.remove('hidden');
+});
+
+window.addEventListener('appinstalled',()=>{
+ deferredInstallPrompt=null;
+ const btn=document.getElementById('installAppBtn');
+ if(btn)btn.classList.add('hidden');
+ if(typeof window.toast==='function')window.toast('FieldInspect Pro installed successfully.');
+});
+
+window.installPWA=async function(){
+ if(!deferredInstallPrompt)return;
+ deferredInstallPrompt.prompt();
+ const {outcome}=await deferredInstallPrompt.userChoice;
+ if(outcome==='accepted'){
+  deferredInstallPrompt=null;
+  const btn=document.getElementById('installAppBtn');
+  if(btn)btn.classList.add('hidden');
+ }
+};
+
+if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
+ window.addEventListener('load',()=>{
+  navigator.serviceWorker.register('/sw.js',{scope:'/'})
+   .then(reg=>{
+    console.info('[FieldInspect] Offline service worker registered.');
+   })
+   .catch(err=>{
+    console.warn('[FieldInspect] Service worker registration notice:',err);
+   });
+ });
 }
 
 window.addEventListener('DOMContentLoaded',()=>{
@@ -406,7 +518,11 @@ async function autoSaveDraftToHistory(reason='autosave'){
   };
   const next=list.slice();
   if(existingIndex<0)next.unshift(record);else next[existingIndex]=record;
-  if(!writeHistory(next))return false;
+  const historySaved=writeHistory(next);
+  if(window.FIELDINSPECT_STORAGE?.saveInspectionBackup){
+   try{await window.FIELDINSPECT_STORAGE.saveInspectionBackup(id, record);}catch(err){console.warn('IDB backup warning:',err);}
+  }
+  if(!historySaved && !window.FIELDINSPECT_STORAGE?.saveInspectionBackup)return false;
 
   // History is the success boundary. Secondary persistence/UI failures cannot
   // turn a successful History write into a reported failure.
@@ -653,11 +769,15 @@ function fitPreview(){
  const scaleWrap=document.getElementById('reportScale');
  const sheet=document.getElementById('reportSheet');
  if(!viewport||!scaleWrap||!sheet)return;
- const viewportWidth=viewport.clientWidth;
- if(viewportWidth<=0)return;
- const available=Math.max(280,viewportWidth-28);
+ let viewportWidth=viewport.clientWidth;
+ if(viewportWidth<=0){
+  const panel=document.getElementById('previewPanel');
+  viewportWidth=panel?.clientWidth||(typeof window!=='undefined'&&window.innerWidth>0?Math.floor(window.innerWidth/2):500);
+ }
+ const available=Math.max(260,viewportWidth-28);
  const sheetWidth=794;
- const scale=Math.min(1,available/sheetWidth);
+ const scale=Math.max(0.25,Math.min(1.2,available/sheetWidth));
+ document.documentElement.style.setProperty('--sheet-scale',String(scale));
  scaleWrap.style.width=sheetWidth+'px';
  scaleWrap.style.transform='scale('+scale+')';
  scaleWrap.style.transformOrigin='top center';
@@ -742,8 +862,21 @@ const sigH=31;if(y+sigH>pageH-18){footer(doc.internal.getNumberOfPages(),doc.int
 function hexRgb(hex){const n=parseInt(hex.slice(1),16);return[(n>>16)&255,(n>>8)&255,n&255]}
 function mobileTab(tab){
  const ed=document.getElementById('editorPanel'),pv=document.getElementById('previewPanel');
- if(tab==='editor'){ed.classList.remove('hidden');pv.classList.add('hidden');document.getElementById('tabEditor').className='py-2 rounded-lg bg-indigo-600 text-white text-xs font-bold';document.getElementById('tabPreview').className='py-2 rounded-lg text-slate-300 text-xs font-bold'}
- else{ed.classList.add('hidden');pv.classList.remove('hidden');document.getElementById('tabPreview').className='py-2 rounded-lg bg-indigo-600 text-white text-xs font-bold';document.getElementById('tabEditor').className='py-2 rounded-lg text-slate-300 text-xs font-bold';fitPreview()}
+ if(!ed||!pv)return;
+ if(tab==='editor'){
+  ed.classList.remove('hidden');
+  if(window.innerWidth<640)pv.classList.add('hidden');
+  const te=document.getElementById('tabEditor'),tp=document.getElementById('tabPreview');
+  if(te)te.className='py-2 rounded-lg bg-indigo-600 text-white text-xs font-bold';
+  if(tp)tp.className='py-2 rounded-lg text-slate-300 text-xs font-bold';
+ }else{
+  pv.classList.remove('hidden');
+  if(window.innerWidth<640)ed.classList.add('hidden');
+  const tp=document.getElementById('tabPreview'),te=document.getElementById('tabEditor');
+  if(tp)tp.className='py-2 rounded-lg bg-indigo-600 text-white text-xs font-bold';
+  if(te)te.className='py-2 rounded-lg text-slate-300 text-xs font-bold';
+  setTimeout(fitPreview,50);
+ }
 }
 // init() is registered once above; keep preview tab switching independent.
 </script>

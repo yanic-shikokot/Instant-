@@ -265,6 +265,159 @@ async function photoDataUrls(state) {
   return state;
 }
 
+// ==========================================
+// IndexedDB Local Storage Fallback Engine
+// ==========================================
+const DB_NAME = 'fieldinspect_pro_db';
+const DB_VERSION = 1;
+const STORE_ACTIVE = 'active_state';
+const STORE_INSPECTIONS = 'inspections_backup';
+
+let idbInstance = null;
+
+function openDB() {
+  if (idbInstance) return Promise.resolve(idbInstance);
+  if (typeof indexedDB === 'undefined') {
+    return Promise.reject(new Error('IndexedDB is not supported in this browser.'));
+  }
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains(STORE_ACTIVE)) {
+        db.createObjectStore(STORE_ACTIVE, { keyPath: 'key' });
+      }
+      if (!db.objectStoreNames.contains(STORE_INSPECTIONS)) {
+        db.createObjectStore(STORE_INSPECTIONS, { keyPath: 'id' });
+      }
+    };
+    req.onsuccess = () => {
+      idbInstance = req.result;
+      resolve(idbInstance);
+    };
+    req.onerror = () => reject(req.error);
+    req.onblocked = () => console.warn('FieldInspect IndexedDB blocked.');
+  });
+}
+
+async function idbPut(storeName, record) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, 'readwrite');
+    const store = tx.objectStore(storeName);
+    const req = store.put(record);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function idbGet(storeName, key) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, 'readonly');
+    const store = tx.objectStore(storeName);
+    const req = store.get(key);
+    req.onsuccess = () => resolve(req.result || null);
+    req.onerror = () => reject(req.error);
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function idbDelete(storeName, key) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, 'readwrite');
+    const store = tx.objectStore(storeName);
+    const req = store.delete(key);
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error);
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function idbGetAll(storeName) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, 'readonly');
+    const store = tx.objectStore(storeName);
+    const req = store.getAll();
+    req.onsuccess = () => resolve(req.result || []);
+    req.onerror = () => reject(req.error);
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function saveActiveState(state) {
+  if (!state) return false;
+  try {
+    const data = JSON.parse(JSON.stringify(state));
+    await idbPut(STORE_ACTIVE, {
+      key: 'current_draft',
+      updatedAt: new Date().toISOString(),
+      state: data
+    });
+    return true;
+  } catch (err) {
+    console.error('FieldInspect IndexedDB saveActiveState error:', err);
+    return false;
+  }
+}
+
+async function loadActiveState() {
+  try {
+    const record = await idbGet(STORE_ACTIVE, 'current_draft');
+    return record?.state || null;
+  } catch (err) {
+    console.error('FieldInspect IndexedDB loadActiveState error:', err);
+    return null;
+  }
+}
+
+async function saveInspectionBackup(id, record) {
+  if (!id || !record) return false;
+  try {
+    const data = JSON.parse(JSON.stringify(record));
+    await idbPut(STORE_INSPECTIONS, {
+      id,
+      updatedAt: new Date().toISOString(),
+      ...data
+    });
+    return true;
+  } catch (err) {
+    console.error('FieldInspect IndexedDB saveInspectionBackup error:', err);
+    return false;
+  }
+}
+
+async function loadInspectionBackup(id) {
+  try {
+    return await idbGet(STORE_INSPECTIONS, id);
+  } catch (err) {
+    console.error('FieldInspect IndexedDB loadInspectionBackup error:', err);
+    return null;
+  }
+}
+
+async function getAllInspectionBackups() {
+  try {
+    return await idbGetAll(STORE_INSPECTIONS);
+  } catch (err) {
+    console.error('FieldInspect IndexedDB getAllInspectionBackups error:', err);
+    return [];
+  }
+}
+
+async function deleteInspectionBackup(id) {
+  try {
+    await idbDelete(STORE_INSPECTIONS, id);
+    return true;
+  } catch (err) {
+    console.error('FieldInspect IndexedDB deleteInspectionBackup error:', err);
+    return false;
+  }
+}
+
 window.FIELDINSPECT_STORAGE = {
   BUCKET,
   uploadPhoto,
@@ -274,5 +427,13 @@ window.FIELDINSPECT_STORAGE = {
   cloneEvidence,
   deleteInspectionEvidence,
   deleteObjects,
-  photoDataUrls
+  photoDataUrls,
+  // IndexedDB offline persistent backup APIs:
+  saveActiveState,
+  loadActiveState,
+  saveInspectionBackup,
+  loadInspectionBackup,
+  getAllInspectionBackups,
+  deleteInspectionBackup,
+  openDB
 };
