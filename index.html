@@ -145,6 +145,31 @@ if (!window.FIELDINSPECT_AUTH?.SUPABASE_URL || !window.FIELDINSPECT_AUTH?.SUPABA
   </div>
  </div>
 </div>
+</section>
+
+<section id="previewPanel" class="hidden lg:block w-full lg:w-[53%] xl:w-[55%] lg:h-[calc(100vh-61px)] bg-slate-100 overflow-hidden">
+ <div class="h-full flex flex-col">
+  <div class="shrink-0 px-4 sm:px-5 py-3 bg-white border-b border-slate-200 flex items-center justify-between gap-3">
+   <div>
+    <div class="flex items-center gap-2">
+     <i data-lucide="eye" class="w-4 h-4 theme-accent"></i>
+     <h2 class="font-extrabold text-sm">Report Preview</h2>
+     <span class="text-[9px] font-bold uppercase tracking-wider text-slate-400 bg-slate-100 border border-slate-200 rounded-full px-2 py-1">A4</span>
+    </div>
+    <p class="text-[10px] text-slate-500 mt-0.5">Live preview of the report that will be exported to PDF.</p>
+   </div>
+   <button type="button" onclick="fitPreview()" class="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 text-[10px] font-bold flex items-center gap-1.5 hover:bg-slate-50" title="Fit report to preview">
+    <i data-lucide="scan" class="w-3.5 h-3.5"></i>Fit
+   </button>
+  </div>
+  <div class="report-viewport flex-1 min-h-0">
+   <div id="reportScale" class="report-scale">
+    <div id="reportSheet" class="report-sheet"></div>
+   </div>
+  </div>
+ </div>
+</section>
+</main>
 
 <!-- PASSWORD RESET -->
 <div id="resetModal" class="fixed inset-0 z-[96] hidden bg-slate-950/75 backdrop-blur-sm p-3 sm:p-6 overflow-y-auto">
@@ -617,10 +642,19 @@ function fitPreview(){
  scaleWrap.style.width=sheetWidth+'px';
  scaleWrap.style.transform='scale('+scale+')';
  scaleWrap.style.transformOrigin='top center';
- // Transforms do not affect layout. Reserve the real rendered height so the
- // entire report remains scrollable even when it grows beyond one A4 page.
+
+ // CSS transforms do not affect normal layout. Reserve the scaled report
+ // height so long reports remain fully scrollable instead of being clipped.
  const renderedHeight=Math.max(1123,sheet.scrollHeight||sheet.offsetHeight||1123);
  scaleWrap.style.height=Math.ceil(renderedHeight*scale+40)+'px';
+
+ // Images and web fonts can change the report height after the first layout.
+ // Re-fit when they finish loading so the visible preview stays accurate.
+ sheet.querySelectorAll('img').forEach(img=>{
+  if(!img.complete)img.addEventListener('load',fitPreview,{once:true});
+  img.addEventListener('error',fitPreview,{once:true});
+ });
+ if(document.fonts?.ready)document.fonts.ready.then(()=>fitPreview()).catch(()=>{});
 }
 function setupSignatures(){
  setupSig('inspectorSig','inspector');setupSig('clientSig','client');
@@ -692,7 +726,7 @@ function mobileTab(tab){
  if(tab==='editor'){ed.classList.remove('hidden');pv.classList.add('hidden');document.getElementById('tabEditor').className='py-2 rounded-lg bg-indigo-600 text-white text-xs font-bold';document.getElementById('tabPreview').className='py-2 rounded-lg text-slate-300 text-xs font-bold'}
  else{ed.classList.add('hidden');pv.classList.remove('hidden');document.getElementById('tabPreview').className='py-2 rounded-lg bg-indigo-600 text-white text-xs font-bold';document.getElementById('tabEditor').className='py-2 rounded-lg text-slate-300 text-xs font-bold';fitPreview()}
 }
-window.addEventListener('DOMContentLoaded',init);
+// init() is registered once above; keep preview tab switching independent.
 </script>
 <script>
 (function(){
