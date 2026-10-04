@@ -54,6 +54,7 @@ button{cursor:pointer}
 }
 </style>
 <script src="auth-config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2"></script>
 <script>
 // Production fallback: guarantees the public Supabase client configuration is
 // available even if a static-host cache temporarily serves index.html without
@@ -228,6 +229,13 @@ function loadState(){
   return structuredClone(DEFAULT_STATE);
  }
 }
+const cfg = window.FIELDINSPECT_AUTH || {};
+const supabaseReady = Boolean(cfg.SUPABASE_URL && cfg.SUPABASE_PUBLISHABLE_KEY && window.supabase?.createClient);
+const supabaseClient = supabaseReady
+  ? window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_PUBLISHABLE_KEY)
+  : null;
+window.FIELDINSPECT_SUPABASE = supabaseClient;
+
 let authUser = null;
 let authMode = 'login';
 
@@ -288,7 +296,7 @@ window.showAuthMode=function(mode){
   authMessage('', 'success'); document.getElementById('authMessage').classList.add('hidden');
 };
 window.submitAuth=async function(){
-  if(!supabase){document.getElementById('authSetup').classList.remove('hidden');return}
+  if(!supabaseClient){document.getElementById('authSetup').classList.remove('hidden');return}
   const email=document.getElementById('authEmail').value.trim();
   const password=document.getElementById('authPassword').value;
   if(!email||!password){authMessage('Enter your email and password.');return}
@@ -298,7 +306,7 @@ window.submitAuth=async function(){
     if(authMode==='signup'){
       const name=document.getElementById('authName').value.trim();
       if(!name){authMessage('Enter your full name.');return}
-      const {data,error}=await supabase.auth.signUp({email,password,options:{data:{full_name:name},emailRedirectTo:authRedirectUrl()||undefined}});
+      const {data,error}=await supabaseClient.auth.signUp({email,password,options:{data:{full_name:name},emailRedirectTo:authRedirectUrl()||undefined}});
       if(error)throw error;
       if(data.session){
         authUser=data.session.user; window.FIELDINSPECT_AUTH_USER=authUser; 
@@ -308,7 +316,7 @@ window.submitAuth=async function(){
         authMessage('Account created. Check your email to confirm your address.','success');
       }
     }else{
-      const {data,error}=await supabase.auth.signInWithPassword({email,password});
+      const {data,error}=await supabaseClient.auth.signInWithPassword({email,password});
       if(error)throw error;
       authUser=data.user;
       window.FIELDINSPECT_AUTH_USER=authUser;
@@ -323,39 +331,39 @@ window.submitAuth=async function(){
   finally{submit.disabled=false;submit.textContent=authMode==='signup'?'Create account':'Sign in'}
 };
 window.startPasswordReset=async function(){
-  if(!supabase){document.getElementById('authSetup').classList.remove('hidden');return}
+  if(!supabaseClient){document.getElementById('authSetup').classList.remove('hidden');return}
   const email=document.getElementById('authEmail').value.trim();
   if(!email){authMessage('Enter your email first, then choose Forgot password.');return}
   try{
-    const {error}=await supabase.auth.resetPasswordForEmail(email,{redirectTo:authRedirectUrl()});
+    const {error}=await supabaseClient.auth.resetPasswordForEmail(email,{redirectTo:authRedirectUrl()});
     if(error)throw error;
     authMessage('Password reset instructions have been sent to your email.','success');
   }catch(e){authMessage(e.message||'Could not send reset email.')}
 };
 window.finishPasswordReset=async function(){
-  if(!supabase){resetMessage('Authentication is not configured yet.');return}
+  if(!supabaseClient){resetMessage('Authentication is not configured yet.');return}
   const password=document.getElementById('resetPassword').value;
   const confirm=document.getElementById('resetConfirm').value;
   if(password.length<8){resetMessage('Password must be at least 8 characters.');return}
   if(password!==confirm){resetMessage('Passwords do not match.');return}
   try{
-    const {error}=await supabase.auth.updateUser({password});
+    const {error}=await supabaseClient.auth.updateUser({password});
     if(error)throw error;
     resetMessage('Password updated successfully. You can now sign in.','success');
     setTimeout(()=>{document.getElementById('resetModal').classList.add('hidden');openAuth('login')},900);
   }catch(e){resetMessage(e.message||'Could not update password.')}
 };
 window.saveProfile=async function(){
-  if(!supabase||!authUser)return;
+  if(!supabaseClient||!authUser)return;
   const name=document.getElementById('profileName').value.trim();
   if(!name){authMessage('Enter your full name.');return}
-  const {data,error}=await supabase.auth.updateUser({data:{full_name:name}});
+  const {data,error}=await supabaseClient.auth.updateUser({data:{full_name:name}});
   if(error){authMessage(error.message);return}
   authUser=data.user; authMessage('Profile updated.','success'); toast('Profile updated.');
 };
 window.signOutUser=async function(){
-  if(!supabase)return;
-  const {error}=await supabase.auth.signOut();
+  if(!supabaseClient)return;
+  const {error}=await supabaseClient.auth.signOut();
   if(error){authMessage(error.message);return}
   authUser=null; window.FIELDINSPECT_AUTH_USER=null; closeAuth(); updateAuthUI(); toast('Signed out.');
 };
@@ -363,10 +371,10 @@ window.signOutUser=async function(){
 
 window.addEventListener('DOMContentLoaded',async()=>{
   document.getElementById('authSetup')?.classList.toggle('hidden',supabaseReady);
-  if(!supabase){updateAuthUI();return}
-  const {data}=await supabase.auth.getSession();
+  if(!supabaseClient){updateAuthUI();return}
+  const {data}=await supabaseClient.auth.getSession();
   authUser=data.session?.user||null; window.FIELDINSPECT_AUTH_USER=authUser; updateAuthUI(); 
-  supabase.auth.onAuthStateChange((_event,session)=>{
+  supabaseClient.auth.onAuthStateChange((_event,session)=>{
     authUser=session?.user||null; window.FIELDINSPECT_AUTH_USER=authUser; updateAuthUI(); 
   });
   const recovery=location.hash.includes('type=recovery');
