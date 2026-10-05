@@ -1,5 +1,5 @@
 // FieldInspect Pro Offline Service Worker
-const CACHE_NAME = 'fieldinspect-pro-v1.8.0';
+const CACHE_NAME = 'fieldinspect-pro-v1.8.1';
 const FONT_CACHE = 'fieldinspect-fonts-v1';
 
 const PRECACHE_ASSETS = [
@@ -11,7 +11,8 @@ const PRECACHE_ASSETS = [
   './cloud-sync.js',
   './pwa-192x192.png',
   './pwa-512x512.png',
-  './icon.svg'
+  './icon.svg',
+  './feature-engine.js'
 ];
 
 self.addEventListener('install', (event) => {
