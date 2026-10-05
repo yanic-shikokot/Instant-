@@ -108,6 +108,20 @@ body.ui-dark #reportSheet input,body.ui-dark #reportSheet textarea,body.ui-dark 
  .report-sheet{box-shadow:none}
 }
 </style>
+<script>
+/* Local development must never be controlled by a production PWA service worker. */
+(function(){
+  try{
+    const host=location.hostname;
+    if(/^(localhost|127\.0\.0\.1|\[::1\])$/i.test(host) && 'serviceWorker' in navigator){
+      navigator.serviceWorker.getRegistrations().then(regs=>{
+        if(regs.length) Promise.all(regs.map(r=>r.unregister())).catch(()=>{});
+      }).catch(()=>{});
+      if(window.caches) caches.keys().then(keys=>Promise.all(keys.map(k=>caches.delete(k)))).catch(()=>{});
+    }
+  }catch(_){}
+})();
+</script>
 <script src="./auth-config.js"></script>
 <script>
 // Production fallback: guarantees the public Supabase client configuration is
@@ -543,7 +557,7 @@ window.installPWA=async function(){
 };
 
 if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
- const localDev=/^(localhost|127\\.0\\.0\\.1|\\[::1\\])$/i.test(location.hostname);
+ const localDev=/^(localhost|127\.0\.0\.1|\[::1\])$/i.test(location.hostname);
  if(localDev){
   window.addEventListener('load',async()=>{
    try{
