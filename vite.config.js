@@ -6,8 +6,8 @@ export default defineConfig({
   server: {
     port: 3000,
     strictPort: true,
-    host: '127.0.0.1',
-    allowedHosts: ['localhost', '127.0.0.1'],
+    host: 'localhost',
+    allowedHosts: ['localhost', '127.0.0.1', '[::1]'],
     forwardConsole: {
       unhandledErrors: true,
       logLevels: ['warn', 'error']
