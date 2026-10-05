@@ -115,8 +115,8 @@ jobs:
           if ($html -notmatch 'src="./auth-config\.js"') {
             throw "SMOKE TEST FAILURE: auth-config.js is not referenced as a packaged static asset."
           }
-          if ($main -notmatch 'autoInstallOnAppQuit\s*=\s*false') {
-            throw "SMOKE TEST FAILURE: updater install-on-quit race protection is missing."
+          if ($main -notmatch 'autoInstallOnAppQuit\s*=\s*true') {
+            throw "SMOKE TEST FAILURE: updater install-on-quit installation is not enabled."
           }
 
           foreach ($tag in @('html','head','body','main','script')) {
