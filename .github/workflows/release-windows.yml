@@ -100,6 +100,19 @@ jobs:
           if ($html -notmatch 'data-fieldinspect-version="' + [regex]::Escape($packageVersion) + '"') {
             throw "SMOKE TEST FAILURE: data-fieldinspect-version marker does not match package.json."
           }
+          if ($html -match '<script\\s+src="\\./feature-engine\\.js"') {
+            throw "SMOKE TEST FAILURE: feature-engine.js must be bundled through a module script."
+          }
+          if ($html -notmatch '<script\\s+type="module"\\s+[^>]*src="[^"]*feature-engine') {
+            throw "SMOKE TEST FAILURE: bundled feature-engine module entry is missing from dist/index.html."
+          }
+
+          $sw = Get-Content "dist/sw.js" -Raw
+          foreach ($forbidden in @('storage-sync.js','cloud-sync.js','feature-engine.js')) {
+            if ($sw -match [regex]::Escape($forbidden)) {
+              throw "SMOKE TEST FAILURE: dist/sw.js must not precache bundled source file $forbidden."
+            }
+          }
           if ($html -notmatch 'id="editorPanel"') { throw "SMOKE TEST FAILURE: Inspection Workspace editor is missing." }
           if ($html -notmatch 'id="previewPanel"') { throw "SMOKE TEST FAILURE: Preview panel is missing." }
           if ($html -notmatch 'id="reportSheet"') { throw "SMOKE TEST FAILURE: report preview sheet is missing." }
