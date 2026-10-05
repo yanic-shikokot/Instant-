@@ -1,3 +1,5 @@
 FieldInspect Pro — Netlify GitHub auto-deploy test.
 Created 2026-10-03 to verify that pushes to main trigger Netlify production deployments.
 Safe to delete after verification.
+
+v1.8.3 Windows release retry: Windows Server 2022 runner.
