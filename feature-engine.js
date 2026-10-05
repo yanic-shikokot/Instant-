@@ -1,4 +1,4 @@
-/* FieldInspect Pro 1.8.3 feature engine */
+/* FieldInspect Pro 1.8.4 feature engine */
 (function(){
 'use strict';
 const TKEY='fieldinspect:checklist-templates:v1';
@@ -87,4 +87,12 @@ function reportObserver(){
  observer.observe(defects,{subtree:true,childList:true});
 }
 function init(){css();launchButtons();reportObserver()}
+
+// Vite bundles this file as an ES module. Keep initialization explicit so the
+// engine mounts in both dev and production builds, regardless of script timing.
+if(document.readyState === 'loading'){
+  document.addEventListener('DOMContentLoaded',init,{once:true});
+}else{
+  init();
+}
 })();
