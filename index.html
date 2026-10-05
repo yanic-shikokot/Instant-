@@ -480,6 +480,23 @@ window.FIELDINSPECT_PERSIST=()=>persist();
 window.FIELDINSPECT_RENDER=()=>renderReport();
 function today(){return new Date().toISOString().slice(0,10)}
 function makeId(){const d=today().replaceAll('-','');return 'REP-'+d+'-'+Math.random().toString(36).slice(2,6).toUpperCase()}
+// Start the core workspace exactly once. Without this bootstrap, the renderer
+// contains the shell but never binds state, renders findings, or paints the A4 preview.
+let __fieldInspectInitialized=false;
+function bootFieldInspect(){
+ if(__fieldInspectInitialized)return;
+ __fieldInspectInitialized=true;
+ init().catch(error=>{
+  __fieldInspectInitialized=false;
+  console.error('[FieldInspect] Workspace initialization failed:',error);
+  const sheet=document.getElementById('reportSheet');
+  if(sheet)sheet.innerHTML='<div class="p-10 text-center text-rose-600 font-semibold">Report preview could not be initialized. Please reload the workspace.</div>';
+  if(typeof toast==='function')toast('Workspace initialization failed. Check the browser console.');
+ });
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',bootFieldInspect,{once:true});
+else bootFieldInspect();
+
 window.addEventListener('beforeunload',()=>{ autoSaveDraftToHistory('beforeunload'); });
 window.addEventListener('pagehide',()=>{ autoSaveDraftToHistory('beforeunload'); });
 
