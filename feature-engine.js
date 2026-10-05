@@ -1,4 +1,4 @@
-/* FieldInspect Pro 1.8.2 feature engine */
+/* FieldInspect Pro 1.8.3 feature engine */
 (function(){
 'use strict';
 const TKEY='fieldinspect:checklist-templates:v1';
@@ -87,5 +87,4 @@ function reportObserver(){
  observer.observe(defects,{subtree:true,childList:true});
 }
 function init(){css();launchButtons();reportObserver()}
-if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else setTimeout(init,0);
 })();
