@@ -1,4 +1,4 @@
-/* FieldInspect Pro 1.8.0 feature engine */
+/* FieldInspect Pro 1.8.2 feature engine */
 (function(){
 'use strict';
 const TKEY='fieldinspect:checklist-templates:v1';
@@ -69,7 +69,23 @@ function reportAppend(){
 }
 function launchButtons(){if(document.getElementById('fi18DashboardBtn'))return;const account=document.getElementById('accountButton');if(!account)return;const mk=(id,icon,label,fn)=>{const b=document.createElement('button');b.id=id;b.className='icon-action';b.title=label;b.innerHTML='<i data-lucide="'+icon+'"></i><span class="hidden xl:inline">'+label+'</span>';b.onclick=fn;return b};account.parentElement.insertBefore(mk('fi18DashboardBtn','layout-dashboard','Dashboard',renderDashboard),account);account.parentElement.insertBefore(mk('fi18EngineBtn','list-checks','Engine',renderEngine),account);window.lucide?.createIcons?.()}
 function editorLauncher(){if(document.getElementById('fi18Launch'))return;const findings=document.getElementById('defects')?.closest('.rounded-2xl');if(!findings)return;const x=document.createElement('div');x.id='fi18Launch';x.className='rounded-2xl border border-slate-200 overflow-hidden';x.innerHTML='<div class="p-4 bg-slate-50 flex items-center justify-between"><div><div class="font-black text-sm">Inspection engine</div><div class="text-[10px] text-slate-500">Checklist, corrective actions and evidence</div></div><div class="flex gap-2"><button class="fi18btn" onclick="openFiEngine()">Checklist</button><button class="fi18btn" onclick="openFiEvidence()">Evidence</button></div></div>';findings.parentElement.insertBefore(x,findings)}
-function reportObserver(){const app=document.getElementById('app');if(!app)return;let observer=null;const refresh=()=>{if(observer)observer.disconnect();try{editorLauncher();addActions();reportAppend()}finally{if(observer)observer.observe(app,{subtree:true,childList:true})}};observer=new MutationObserver(refresh);refresh()}
+function reportObserver(){
+ const defects=document.getElementById('defects');
+ const refresh=()=>{editorLauncher();addActions();reportAppend()};
+ refresh();
+ if(!defects)return;
+ let queued=false;
+ const observer=new MutationObserver(()=>{
+  if(queued)return;
+  queued=true;
+  queueMicrotask(()=>{
+   queued=false;
+   observer.disconnect();
+   try{refresh()}finally{observer.observe(defects,{subtree:true,childList:true})}
+  });
+ });
+ observer.observe(defects,{subtree:true,childList:true});
+}
 function init(){css();launchButtons();reportObserver()}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else setTimeout(init,0);
 })();
