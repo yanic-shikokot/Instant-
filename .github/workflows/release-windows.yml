@@ -94,7 +94,7 @@ jobs:
           $html = Get-Content "dist/index.html" -Raw
           $main = Get-Content "electron/main.cjs" -Raw
 
-          if ($html -notmatch '<meta\\s+name="application-version"\\s+content="' + [regex]::Escape($packageVersion) + '"') {
+          if ($html -notmatch '<meta\s+name="application-version"\s+content="' + [regex]::Escape($packageVersion) + '"') {
             throw "SMOKE TEST FAILURE: application-version marker is missing or stale in dist/index.html."
           }
           if ($html -notmatch 'data-fieldinspect-version="' + [regex]::Escape($packageVersion) + '"') {
