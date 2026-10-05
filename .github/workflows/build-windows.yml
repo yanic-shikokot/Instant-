@@ -5,8 +5,9 @@ concurrency:
   cancel-in-progress: true
 
 on:
-  push:
-    branches: [main]
+  # Windows release builds are handled by release-windows.yml.
+  # Keep this workflow manual so every push does not consume another
+  # GitHub-hosted Windows runner alongside the release job.
   workflow_dispatch:
 
 permissions:
