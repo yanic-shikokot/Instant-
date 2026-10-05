@@ -461,6 +461,9 @@ function toast(msg){
  const el=document.getElementById('toast');if(!el)return;el.textContent=msg;el.classList.remove('hidden');clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.classList.add('hidden'),4200);
 }
 window.toast=toast;
+window.FIELDINSPECT_GET_STATE=()=>state;
+window.FIELDINSPECT_PERSIST=()=>persist();
+window.FIELDINSPECT_RENDER=()=>renderReport();
 function today(){return new Date().toISOString().slice(0,10)}
 function makeId(){const d=today().replaceAll('-','');return 'REP-'+d+'-'+Math.random().toString(36).slice(2,6).toUpperCase()}
 window.addEventListener('beforeunload',()=>{ autoSaveDraftToHistory('beforeunload'); });
@@ -1491,6 +1494,7 @@ window.addEventListener('DOMContentLoaded',async()=>{
 
 <script type="module" src="./storage-sync.js"></script>
 <script type="module" src="./cloud-sync.js"></script>
+<script type="module" src="./feature-engine.js"></script>
 </body>
 <!-- FieldInspect release marker: v1.6.29 renderer, sync, dark-mode and CSV fixes. 2026-10-05 -->
 </html>
