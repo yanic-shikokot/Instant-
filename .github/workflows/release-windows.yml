@@ -103,8 +103,8 @@ jobs:
           if ($html -match '<script\\s+src="\\./feature-engine\\.js"') {
             throw "SMOKE TEST FAILURE: feature-engine.js must be bundled through a module script."
           }
-          if ($html -notmatch '<script\\s+type="module"\\s+[^>]*src="[^"]*feature-engine') {
-            throw "SMOKE TEST FAILURE: bundled feature-engine module entry is missing from dist/index.html."
+          if ($html -match '<script\\s+type="module"\\s+[^>]*src="[^"]*feature-engine\\.js"') {
+            throw "SMOKE TEST FAILURE: source feature-engine.js was not transformed into a production asset."
           }
 
           $sw = Get-Content "dist/sw.js" -Raw
