@@ -154,9 +154,9 @@ function configureAutoUpdates() {
   };
 
   autoUpdater.autoDownload = true;
-  // electron-updater 6.x uses autoInstallOnAppQuit. Keep installation manual so
-  // closing and immediately reopening the Windows app cannot race the NSIS installer.
-  autoUpdater.autoInstallOnAppQuit = false;
+  // electron-updater 6.x uses autoInstallOnAppQuit for the Windows NSIS target.
+  // Keep downloaded updates staged and install them safely when the app quits.
+  autoUpdater.autoInstallOnAppQuit = true;
   autoUpdater.allowDowngrade = false;
   autoUpdater.allowPrerelease = false;
 
@@ -194,7 +194,7 @@ function configureAutoUpdates() {
       cancelId: 1,
       title: 'FieldInspect Pro update ready',
       message: `FieldInspect Pro ${info?.version || 'a new version'} is ready to install.`,
-      detail: 'Choose Restart and update to install it now. If you choose Later, the downloaded update will be installed automatically the next time FieldInspect Pro starts.'
+      detail: 'Choose Restart and update to install it now. If you choose Later, the downloaded update will be installed when you next close and reopen FieldInspect Pro.'
     });
 
     if (result.response === 0) {
