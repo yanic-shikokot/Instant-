@@ -7,11 +7,7 @@ export default defineConfig({
     port: 3000,
     strictPort: true,
     host: '0.0.0.0',
-    allowedHosts: true,
-    forwardConsole: {
-      unhandledErrors: true,
-      logLevels: ['warn', 'error']
-    }
+    allowedHosts: true
   },
   plugins: [
     tailwindcss()
