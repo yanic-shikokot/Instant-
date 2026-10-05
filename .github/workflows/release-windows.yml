@@ -1,9 +1,5 @@
 name: Release Windows Installer
 
-concurrency:
-  group: fieldinspect-release-${{ github.ref }}
-  cancel-in-progress: true
-
 on:
   push:
     branches:
