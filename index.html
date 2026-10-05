@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>FieldInspect Pro - Photo & PDF Report Generator</title>
 <meta name="description" content="A fast, field-ready photo and inspection report generator for technicians, home inspectors, and contractors with live preview and instant multi-page PDF export.">
 <meta property="og:title" content="FieldInspect Pro - Photo & PDF Report Generator">
@@ -11,7 +11,7 @@
 <meta name="theme-color" content="#020617">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="FieldInspect">
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./apple-touch-icon.png">
@@ -40,9 +40,9 @@ button{cursor:pointer}
 .report-scale{width:794px;min-width:794px;margin:0 auto;transform-origin:top center;transform:scale(var(--sheet-scale));will-change:transform}
 .report-sheet{width:794px;min-height:1123px;background:#fff;color:#0f172a;box-shadow:0 18px 45px rgba(15,23,42,.16);overflow:hidden;border-radius:4px}
 @media(max-width:639px){
- .workspace-main{flex-direction:column}
- .workspace-editor,.workspace-preview{width:100%;flex:1 1 100%;border-right:0}
- .report-viewport{padding:10px 4px 30px}
+ .workspace-main{flex-direction:column;height:calc(100vh - 50px - env(safe-area-inset-bottom,0px))}
+ .workspace-editor,.workspace-preview{width:100%;flex:1 1 100%;border-right:0;padding-bottom:72px}
+ .report-viewport{padding:10px 4px 85px}
 }
 .pdf-font-inter{font-family:Inter,Arial,sans-serif}
 .pdf-font-dm{font-family:'DM Sans',Arial,sans-serif}
@@ -186,7 +186,13 @@ if (!window.FIELDINSPECT_AUTH?.SUPABASE_URL || !window.FIELDINSPECT_AUTH?.SUPABA
     <label class="text-xs font-semibold text-slate-600 sm:col-span-2">Project / report title<input id="projectName" class="field" placeholder="Electrical installation inspection"></label>
     <label class="text-xs font-semibold text-slate-600">Inspector / technician<input id="inspectorName" class="field" placeholder="Inspector name"></label>
     <label class="text-xs font-semibold text-slate-600">Client<input id="clientName" class="field" placeholder="Client or company"></label>
-    <label class="text-xs font-semibold text-slate-600 sm:col-span-2">Site location<input id="siteLocation" class="field" placeholder="Site address / location"></label>
+    <div class="sm:col-span-2">
+     <div class="flex items-center justify-between mb-1">
+      <span class="text-xs font-semibold text-slate-600">Site location</span>
+      <button type="button" onclick="acquireGpsLocation()" class="text-[10px] font-bold text-indigo-600 hover:text-indigo-500 flex items-center gap-1 hover:underline cursor-pointer" title="Auto-detect current GPS location"><i data-lucide="map-pin" class="w-3 h-3"></i><span>GPS Auto-tag</span></button>
+     </div>
+     <input id="siteLocation" class="field" placeholder="Site address / location">
+    </div>
     <label class="text-xs font-semibold text-slate-600">Weather / site conditions<input id="conditions" class="field" placeholder="Dry · operational"></label>
     <label class="text-xs font-semibold text-slate-600">Overall status<select id="overallStatus" class="field"><option>Attention required</option><option>Monitor</option><option>Satisfactory</option><option>Passed</option></select></label><label class="text-xs font-semibold text-slate-600">Workflow status<select id="workflowStatus" class="field"><option value="draft">Draft</option><option value="in-progress">In Progress</option><option value="completed">Completed</option><option value="archived">Archived</option></select></label>
    </div>
@@ -231,6 +237,30 @@ if (!window.FIELDINSPECT_AUTH?.SUPABASE_URL || !window.FIELDINSPECT_AUTH?.SUPABA
  </div>
 </section>
 </main>
+
+<!-- MOBILE PHONE APP NAVIGATION DOCK -->
+<nav class="sm:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-t border-slate-200 dark:border-slate-800 px-3 py-1.5 pb-[calc(0.4rem+env(safe-area-inset-bottom,0px))] shadow-2xl flex items-center justify-around">
+ <button onclick="mobileTab('editor')" id="mobileNavEditor" class="flex flex-col items-center gap-0.5 text-indigo-600 dark:text-indigo-400 py-1 px-2.5" aria-label="Editor tab">
+  <i data-lucide="edit-3" class="w-4 h-4"></i>
+  <span class="text-[9px] font-bold">Editor</span>
+ </button>
+ <button onclick="mobileTab('preview')" id="mobileNavPreview" class="flex flex-col items-center gap-0.5 text-slate-500 hover:text-slate-900 dark:text-slate-400 py-1 px-2.5" aria-label="Preview tab">
+  <i data-lucide="eye" class="w-4 h-4"></i>
+  <span class="text-[9px] font-bold">Preview</span>
+ </button>
+ <button type="button" onclick="triggerMobileShutter()" class="flex flex-col items-center justify-center -mt-5 w-12 h-12 rounded-full text-white shadow-xl ring-4 ring-white dark:ring-slate-900 transition active:scale-95" style="background:var(--accent)" title="Quick Camera Capture" aria-label="Snap photo with camera">
+  <i data-lucide="camera" class="w-6 h-6"></i>
+ </button>
+ <button onclick="window.openFiEngine?.()" class="flex flex-col items-center gap-0.5 text-slate-500 hover:text-slate-900 dark:text-slate-400 py-1 px-2.5" aria-label="Checklist engine">
+  <i data-lucide="list-checks" class="w-4 h-4"></i>
+  <span class="text-[9px] font-bold">Checklist</span>
+ </button>
+ <button onclick="shareReport()" class="flex flex-col items-center gap-0.5 text-slate-500 hover:text-slate-900 dark:text-slate-400 py-1 px-2.5" aria-label="Share PDF report">
+  <i data-lucide="share-2" class="w-4 h-4"></i>
+  <span class="text-[9px] font-bold">Share PDF</span>
+ </button>
+</nav>
+<input type="file" id="mobileQuickCameraInput" accept="image/*" capture="environment" class="hidden" onchange="handleQuickCameraCapture(this.files);this.value=''">
 
 <!-- ACCOUNT / AUTHENTICATION -->
 <div id="authModal" class="fixed inset-0 z-[95] hidden bg-slate-950/75 backdrop-blur-sm p-3 sm:p-6 overflow-y-auto">
@@ -851,8 +881,9 @@ function renderDefects(){
    '<div class="flex items-center gap-2"><span class="w-6 h-6 rounded-lg bg-slate-900 text-white text-[10px] font-black flex items-center justify-center">'+(i+1)+'</span><input data-item-title value="'+escapeHtml(it.title)+'" oninput="updateItem('+i+',\'title\',this.value)" class="flex-1 bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:border-indigo-500"><button onclick="removeDefect('+i+')" title="Delete finding" class="text-slate-400 hover:text-rose-600"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div>'+
    '<div class="grid sm:grid-cols-2 gap-2"><label class="text-[10px] uppercase font-bold text-slate-500">Severity<select onchange="updateItem('+i+',\'severity\',this.value)" class="field !mt-1 !py-1.5"><option '+(it.severity==='high'?'selected':'')+' value="high">High / Critical</option><option '+(it.severity==='medium'?'selected':'')+' value="medium">Medium / Monitor</option><option '+(it.severity==='low'?'selected':'')+' value="low">Low / Advisory</option></select></label><label class="text-[10px] uppercase font-bold text-slate-500">Area / zone<input value="'+escapeHtml(it.location)+'" oninput="updateItem('+i+',\'location\',this.value)" class="field !mt-1 !py-1.5" placeholder="Main panel"></label></div>'+
    '<div class="grid sm:grid-cols-2 gap-2"><label class="text-[10px] uppercase font-bold text-slate-500">Risk / impact<input value="'+escapeHtml(it.risk||'')+'" oninput="updateItem('+i+',\'risk\',this.value)" class="field !mt-1 !py-1.5" placeholder="Shock hazard, fire risk, service interruption…"></label><label class="text-[10px] uppercase font-bold text-slate-500">Recommendation<input value="'+escapeHtml(it.recommendation||'')+'" oninput="updateItem('+i+',\'recommendation\',this.value)" class="field !mt-1 !py-1.5" placeholder="Corrective action required…"></label></div>'+
-   '<label class="block text-[10px] uppercase font-bold text-slate-500">Field notes <span class="normal-case font-medium text-slate-400">Press Enter for the next bullet</span><textarea onkeydown="handleNotesKey(event,'+i+')" oninput="updateItem('+i+',\'notes\',this.value)" class="field bullet-editor !mt-1 min-h-[110px] resize-y" placeholder="• Observation">'+escapeHtml(it.notes)+'</textarea></label>'+
-   '<div class="flex items-center gap-3"><label class="flex-1"><span class="text-[10px] uppercase font-bold text-slate-500">Photo evidence</span><input type="file" accept="image/*" multiple onchange="addPhotos('+i+',this.files);this.value=\'\'" class="block w-full mt-1 text-[11px] text-slate-500 file:mr-2 file:rounded-lg file:border-0 file:bg-slate-200 file:px-2 file:py-1.5 file:text-[10px] file:font-bold"></label><div class="text-[10px] text-slate-400 shrink-0">Up to 6 · auto-compressed</div></div>'+
+   '<div class="flex items-center justify-between"><label class="text-[10px] uppercase font-bold text-slate-500">Field notes <span class="normal-case font-medium text-slate-400">Press Enter for next bullet</span></label><button type="button" onclick="startVoiceDictation('+i+')" class="text-[10px] font-bold text-indigo-600 hover:text-indigo-500 flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-indigo-50 cursor-pointer" title="Dictate notes with microphone"><i data-lucide="mic" class="w-3 h-3"></i><span>Voice dictation</span></button></div>'+
+   '<textarea onkeydown="handleNotesKey(event,'+i+')" oninput="updateItem('+i+',\'notes\',this.value)" class="field bullet-editor !mt-1 min-h-[110px] resize-y" placeholder="• Observation">'+escapeHtml(it.notes)+'</textarea>'+
+   '<div class="flex items-center gap-3"><label class="flex-1"><span class="text-[10px] uppercase font-bold text-slate-500">Photo evidence</span><input type="file" accept="image/*" capture="environment" multiple onchange="addPhotos('+i+',this.files);this.value=\'\'" class="block w-full mt-1 text-[11px] text-slate-500 file:mr-2 file:rounded-lg file:border-0 file:bg-slate-200 file:px-2 file:py-1.5 file:text-[10px] file:font-bold"></label><div class="text-[10px] text-slate-400 shrink-0">Camera / Files · up to 6</div></div>'+
    '<div class="grid grid-cols-2 sm:grid-cols-3 gap-2">'+it.photos.map((p,j)=>'<div class="relative"><div class="absolute top-1 left-1 z-10 px-1.5 py-0.5 rounded bg-slate-950/80 text-white text-[9px] font-bold">Photo '+(j+1)+'</div><img src="'+p.data+'" class="photo-thumb w-full rounded-lg border border-slate-200"><button onclick="removePhoto('+i+','+j+')" class="absolute -top-1 -right-1 w-5 h-5 bg-slate-900 text-white rounded-full text-[10px]">×</button><input value="'+escapeHtml(p.caption||'')+'" oninput="updatePhotoCaption('+i+','+j+',this.value)" class="w-full mt-1 text-[10px] border border-slate-200 rounded-md px-2 py-1" placeholder="Photo caption"></div>').join('')+'</div>'+
   '</article>'
  }).join('');
@@ -1049,7 +1080,7 @@ function setupSig(id,key){
 }
 function clearSig(id){const c=document.getElementById(id),ctx=c.getContext('2d');ctx.clearRect(0,0,c.width,c.height);const key=id==='inspectorSig'?'inspector':'client';state.signatures[key]='';persist();renderReport()}
 
-async function handlePdf(){
+async function handlePdf(triggerShare=false){
  const modal=document.getElementById('pdfModal');
  const status=document.getElementById('pdfStatus'),progress=document.getElementById('pdfProgress');
  if(!modal||!status||!progress){toast('PDF interface is not available. Refresh the page and try again.');return}
@@ -1089,7 +1120,26 @@ const sigH=31;if(y+sigH>pageH-18){footer(doc.internal.getNumberOfPages(),doc.int
   doc.setDrawColor(203,213,225);doc.line(margin,y,pageW-margin,y);y+=5;doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(...hexRgb(t.hex));doc.text('DIGITAL SIGNATURES & VERIFICATION',margin,y+3);y+=7;const sw=contentW/2-4;[['Inspector',state.signatures.inspector,state.meta.inspectorName],['Client / Recipient',state.signatures.client,state.meta.clientName]].forEach((sig,i)=>{const x=margin+i*(sw+8);doc.setFillColor(248,250,252);doc.setDrawColor(226,232,240);doc.roundedRect(x,y,sw,20,1.5,1.5,'FD');doc.setFont('helvetica','bold');doc.setFontSize(6.5);doc.setTextColor(100,116,139);doc.text(sig[0].toUpperCase(),x+3,y+4);if(sig[1]){try{doc.addImage(sig[1],'PNG',x+3,y+5,sw-6,10,undefined,'FAST')}catch(e){}}else{doc.setFont('helvetica','italic');doc.setFontSize(7);doc.text('(Signature pending)',x+20,y+11)}doc.setFont('helvetica','normal');doc.setFontSize(6.5);doc.setTextColor(15,23,42);doc.text(sig[2]||sig[0],x+3,y+17.5)});
   progress.style.width='92%';status.textContent='Finalizing page numbers…';await new Promise(r=>setTimeout(r,50));
   const total=doc.internal.getNumberOfPages();for(let p=1;p<=total;p++){doc.setPage(p);footer(p,total)}
-  const safe=(state.meta.projectName||'Inspection_Report').replace(/[^a-z0-9_-]+/gi,'_').slice(0,50);doc.save((state.meta.reportId||'REP')+'_'+safe+'.pdf');
+  const safe=(state.meta.projectName||'Inspection_Report').replace(/[^a-z0-9_-]+/gi,'_').slice(0,50);
+  const pdfName=(state.meta.reportId||'REP')+'_'+safe+'.pdf';
+  if(triggerShare && navigator.share){
+   try{
+    const pdfBlob=doc.output('blob');
+    const pdfFile=new File([pdfBlob],pdfName,{type:'application/pdf'});
+    if(!navigator.canShare || navigator.canShare({files:[pdfFile]})){
+     await navigator.share({
+      title:state.meta.projectName||'Field Inspection Report',
+      text:'Field inspection report: '+(state.meta.reportId||''),
+      files:[pdfFile]
+     });
+     progress.style.width='100%';status.textContent='Report shared successfully.';toast('Report shared.');
+     return;
+    }
+   }catch(shareErr){
+    if(shareErr.name!=='AbortError')console.warn('Native share notice:',shareErr);
+   }
+  }
+  doc.save(pdfName);
   progress.style.width='100%';status.textContent='PDF downloaded successfully.';toast('PDF exported successfully.');
  }catch(e){console.error(e);status.textContent='PDF generation failed: '+e.message;toast('PDF generation failed. Check the browser console for details.')}
  finally{
@@ -1136,21 +1186,131 @@ function hexRgb(hex){const n=parseInt(hex.slice(1),16);return[(n>>16)&255,(n>>8)
 function mobileTab(tab){
  const ed=document.getElementById('editorPanel'),pv=document.getElementById('previewPanel');
  if(!ed||!pv)return;
- if(tab==='editor'){
+ const isEd=tab==='editor';
+ if(isEd){
   ed.classList.remove('hidden');
   if(window.innerWidth<640)pv.classList.add('hidden');
-  const te=document.getElementById('tabEditor'),tp=document.getElementById('tabPreview');
-  if(te)te.className='py-2 rounded-lg bg-indigo-600 text-white text-xs font-bold';
-  if(tp)tp.className='py-2 rounded-lg text-slate-300 text-xs font-bold';
  }else{
   pv.classList.remove('hidden');
   if(window.innerWidth<640)ed.classList.add('hidden');
-  const tp=document.getElementById('tabPreview'),te=document.getElementById('tabEditor');
-  if(tp)tp.className='py-2 rounded-lg bg-indigo-600 text-white text-xs font-bold';
-  if(te)te.className='py-2 rounded-lg text-slate-300 text-xs font-bold';
   setTimeout(fitPreview,50);
  }
+ const te=document.getElementById('tabEditor'),tp=document.getElementById('tabPreview');
+ if(te)te.className=isEd?'py-2 rounded-lg bg-indigo-600 text-white text-xs font-bold':'py-2 rounded-lg text-slate-300 text-xs font-bold';
+ if(tp)tp.className=!isEd?'py-2 rounded-lg bg-indigo-600 text-white text-xs font-bold':'py-2 rounded-lg text-slate-300 text-xs font-bold';
+
+ const ne=document.getElementById('mobileNavEditor'),np=document.getElementById('mobileNavPreview');
+ if(ne)ne.className=isEd?'flex flex-col items-center gap-0.5 text-indigo-600 dark:text-indigo-400 py-1 px-2.5':'flex flex-col items-center gap-0.5 text-slate-500 hover:text-slate-900 dark:text-slate-400 py-1 px-2.5';
+ if(np)np.className=!isEd?'flex flex-col items-center gap-0.5 text-indigo-600 dark:text-indigo-400 py-1 px-2.5':'flex flex-col items-center gap-0.5 text-slate-500 hover:text-slate-900 dark:text-slate-400 py-1 px-2.5';
 }
+
+window.shareReport=function(){
+ handlePdf(true);
+};
+
+window.acquireGpsLocation=function(){
+ if(!navigator.geolocation){
+  toast('GPS geolocation not supported on this device.');
+  return;
+ }
+ toast('Acquiring GPS coordinates…');
+ navigator.geolocation.getCurrentPosition(
+  pos=>{
+   const lat=pos.coords.latitude.toFixed(5);
+   const lon=pos.coords.longitude.toFixed(5);
+   const acc=Math.round(pos.coords.accuracy);
+   const val=`GPS: ${lat}, ${lon} (±${acc}m)`;
+   state.meta.siteLocation=val;
+   const el=document.getElementById('siteLocation');
+   if(el)el.value=val;
+   persist();
+   renderReport();
+   toast('GPS location acquired!');
+  },
+  err=>{
+   console.warn('Geolocation notice:',err);
+   toast('Unable to retrieve GPS coordinates. Check location permissions.');
+  },
+  {enableHighAccuracy:true,timeout:10000,maximumAge:60000}
+ );
+};
+
+window.startVoiceDictation=function(index){
+ const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+ if(!SR){
+  toast('Voice dictation is not supported in this browser. Try Chrome or Safari.');
+  return;
+ }
+ try{
+  const rec=new SR();
+  rec.continuous=false;
+  rec.interimResults=false;
+  rec.lang='en-US';
+  toast('Listening… Speak your inspection observation.');
+  rec.onresult=function(e){
+   const text=e.results?.[0]?.[0]?.transcript;
+   if(!text)return;
+   const item=state.items[index];
+   if(!item)return;
+   const prev=(item.notes||'').trim();
+   item.notes=prev?prev+'\n• '+text:'• '+text;
+   persist();
+   renderDefects();
+   renderReport();
+   toast('Dictated: "'+text+'"');
+  };
+  rec.onerror=function(err){
+   console.warn('Speech recognition notice:',err);
+   toast('Could not capture audio. Check microphone permissions.');
+  };
+  rec.start();
+ }catch(err){
+  console.warn('Speech start error:',err);
+  toast('Voice dictation could not be started.');
+ }
+};
+
+window.triggerMobileShutter=function(){
+ document.getElementById('mobileQuickCameraInput')?.click();
+};
+
+window.handleQuickCameraCapture=async function(files){
+ if(!files||!files.length)return;
+ const file=files[0];
+ if(!file.type.startsWith('image/')){
+  toast('Selected file is not an image.');
+  return;
+ }
+ toast('Processing camera photo…');
+ try{
+  const compressed=await compressImage(file,1400,.78);
+  const watermarked=await applyPhotoWatermark(compressed,{reportId:state.meta.reportId,projectName:state.meta.projectName});
+  const photo={id:makeId()+'-PHOTO',data:watermarked,name:file.name||'Camera_Photo.jpg',caption:'',addedAt:new Date().toISOString(),watermarkText:(state.meta.reportId||state.meta.projectName||'').trim()};
+
+  if(!state.items.length){
+   addDefect(false);
+  }
+  const lastItem=state.items[state.items.length-1];
+  lastItem.photos=lastItem.photos||[];
+  if(lastItem.photos.length>=6){
+   addDefect(false);
+   state.items[state.items.length-1].photos.push(photo);
+  }else{
+   lastItem.photos.push(photo);
+  }
+  if(window.FIELDINSPECT_AUTH_USER&&window.FIELDINSPECT_STORAGE){
+   try{await window.FIELDINSPECT_STORAGE.uploadPhoto(state,photo);}catch(_){}
+  }
+  persist();
+  mobileTab('editor');
+  renderDefects();
+  renderReport();
+  toast('Photo captured & added to Finding #'+state.items.length+'!');
+ }catch(err){
+  console.error('Mobile camera capture error:',err);
+  toast('Could not process camera photo.');
+ }
+};
 // init() is registered once above; keep preview tab switching independent.
 </script>
 <script>

@@ -14,11 +14,15 @@
     "clean": "rimraf dist release",
     "lint": "tsc --noEmit",
     "electron:dev": "npm run build && electron .",
+    "cap:sync": "cap sync",
+    "cap:build": "npm run build && cap sync",
     "dist": "npm run build && electron-builder --win nsis --publish never",
     "dist:dir": "npm run build && electron-builder --win --dir --publish never",
     "release": "electron-builder --win nsis --publish always"
   },
   "dependencies": {
+    "@capacitor/cli": "^8.5.2",
+    "@capacitor/core": "^8.5.2",
     "@google/genai": "^2.4.0",
     "@supabase/supabase-js": "^2.117.2",
     "dotenv": "^17.2.3",
