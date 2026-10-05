@@ -1,31 +1,20 @@
 import { defineConfig } from 'vite';
 import tailwindcss from '@tailwindcss/vite';
-import http from 'node:http';
 
 export default defineConfig({
   base: './',
   server: {
-    port: 3001,
-    host: '0.0.0.0',
-    allowedHosts: true,
+    port: 3000,
+    strictPort: true,
+    host: '127.0.0.1',
+    allowedHosts: ['localhost', '127.0.0.1'],
+    forwardConsole: {
+      unhandledErrors: true,
+      logLevels: ['warn', 'error']
+    }
   },
   plugins: [
-    tailwindcss(),
-    {
-      name: 'port-compat-bridge',
-      configureServer(server) {
-        // Ensure both port 3001 and port 3000 are simultaneously active
-        // without requiring conflicting duplicate CLI flags in package.json
-        try {
-          const mirrorPort = server.config.server.port === 3001 ? 3000 : 3001;
-          const bridge = http.createServer((req, res) => {
-            server.middlewares(req, res);
-          });
-          bridge.on('error', () => {});
-          bridge.listen(mirrorPort, '0.0.0.0');
-        } catch (_) {}
-      }
-    }
+    tailwindcss()
   ],
   build: {
     outDir: 'dist',
