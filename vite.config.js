@@ -1,13 +1,22 @@
 import { defineConfig } from 'vite';
 import tailwindcss from '@tailwindcss/vite';
 
+const isCloudRun = Boolean(process.env.K_SERVICE || process.env.K_REVISION);
+const hmrDisabled = process.env.DISABLE_HMR === 'true';
+const hmrClientPort = Number(process.env.VITE_HMR_CLIENT_PORT || (isCloudRun ? 443 : 3000));
+const hmrProtocol = process.env.VITE_HMR_PROTOCOL || (isCloudRun ? 'wss' : 'ws');
+
 export default defineConfig({
   base: './',
   server: {
     port: 3000,
     strictPort: true,
     host: '0.0.0.0',
-    allowedHosts: true
+    allowedHosts: true,
+    ws: hmrDisabled ? false : {
+      clientPort: hmrClientPort,
+      protocol: hmrProtocol
+    }
   },
   plugins: [
     tailwindcss()
