@@ -32,7 +32,55 @@ jobs:
           git fetch --tags --force
 
           $packageVersion = node -p "require('./package.json').version"
-          $latestTag = (git tag --sort=-v:refname | Where-Object { $_ -match '^v[0-9]+\\.[0-9]+\\.[0-9]+
+          $latestTag = git tag --sort=-v:refname | Where-Object { $_ -like 'v*.*.*' } | Select-Object -First 1
+
+          if ($latestTag) {
+            $latestVersion = $latestTag.Substring(1)
+            $current = [version]$packageVersion
+            $latest = [version]$latestVersion
+
+            if ($current -lt $latest) {
+              throw "RELEASE SAFETY FAILURE: package.json version $packageVersion is older than the latest published release $latestVersion."
+            }
+
+            if ($current -eq $latest) {
+              $nextVersion = "$($current.Major).$($current.Minor).$($current.Build + 1)"
+              Write-Host "No new version was supplied. Automatically advancing $packageVersion -> $nextVersion."
+
+              node -e 'const fs=require("fs"); const v=process.argv[1]; const p=JSON.parse(fs.readFileSync("package.json","utf8")); p.version=v; fs.writeFileSync("package.json",JSON.stringify(p,null,2)+"\n"); let h=fs.readFileSync("index.html","utf8"); h=h.replace(/name="application-version" content="[^"]+"/, "name=\"application-version\" content=\""+v+"\""); h=h.replace(/data-fieldinspect-version="[^"]+"/, "data-fieldinspect-version=\""+v+"\""); h=h.replace(/FieldInspect release marker: v[^,]+/, "FieldInspect release marker: v"+v); fs.writeFileSync("index.html",h);' -- "$nextVersion"
+
+              git config user.name "github-actions[bot]"
+              git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+              git add package.json index.html
+              git commit -m "release: bump FieldInspect Pro to $nextVersion"
+              git push origin HEAD:main
+            }
+          }
+
+          $packageVersion = node -p "require('./package.json').version"
+          $tag = "v$packageVersion"
+          "FIELDINSPECT_RELEASE_VERSION=$packageVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "FIELDINSPECT_RELEASE_TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Write-Host "Release version prepared: $tag"
+
+      - name: Validate release version
+        shell: pwsh
+        run: |
+          $packageVersion = node -p "require('./package.json').version"
+          $tag = "v$packageVersion"
+
+          git fetch --tags --force
+          $existing = git tag --list $tag
+          if ($existing) {
+            $tagSha = (git rev-list -n 1 $tag).Trim()
+            $headSha = (git rev-parse HEAD).Trim()
+            if ($tagSha -ne $headSha) {
+              throw "RELEASE SAFETY FAILURE: $tag already points to $tagSha while this build is $headSha."
+            }
+          }
+
+          Write-Host "Release version validated: $tag"
+
       - name: Install dependencies
         run: npm install
 
