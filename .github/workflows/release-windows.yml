@@ -26,47 +26,21 @@ jobs:
 
       - name: Prepare release version
         shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           git fetch --tags --force
-
-          $packageVersion = node -p "require('./package.json').version"
-          $latestTag = git tag --sort=-v:refname | Where-Object { $_ -like 'v*.*.*' } | Select-Object -First 1
-
-          if ($latestTag) {
-            $latestVersion = $latestTag.Substring(1)
-            $current = [version]$packageVersion
-            $latest = [version]$latestVersion
-
-            if ($current -lt $latest) {
-              throw "RELEASE SAFETY FAILURE: package.json version $packageVersion is older than the latest published release $latestVersion."
-            }
-
-            if ($current -eq $latest) {
-              $nextVersion = "$($current.Major).$($current.Minor).$($current.Build + 1)"
-              Write-Host "No new version was supplied. Automatically advancing $packageVersion -> $nextVersion."
-
-              $package = Get-Content "package.json" -Raw | ConvertFrom-Json
-              $package.version = $nextVersion
-              $package | ConvertTo-Json -Depth 100 | Set-Content "package.json" -Encoding utf8
-
-              $html = Get-Content "index.html" -Raw
-              $html = $html -replace 'name="application-version" content="[^"]+"', "name=" + [char]34 + "application-version" + [char]34 + " content=" + [char]34 + $nextVersion + [char]34
-              $html = $html -replace 'data-fieldinspect-version="[^"]+"', "data-fieldinspect-version=" + [char]34 + $nextVersion + [char]34
-              $html = $html -replace 'FieldInspect release marker: v[^,]+', "FieldInspect release marker: v$nextVersion"
-              Set-Content "index.html" -Value $html -Encoding utf8
-
-              git config user.name "github-actions[bot]"
-              git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-              git add package.json index.html
-              git commit -m "release: bump FieldInspect Pro to $nextVersion"
-              git push origin HEAD:main
-            }
-          }
+          node scripts/prepare-release-version.cjs
 
           $packageVersion = node -p "require('./package.json').version"
           $tag = "v$packageVersion"
+
+          if (-not (git diff --quiet -- package.json index.html)) {
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add package.json index.html
+            git commit -m "release: bump FieldInspect Pro to $packageVersion"
+            git push origin HEAD:main
+          }
+
           "FIELDINSPECT_RELEASE_VERSION=$packageVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
           "FIELDINSPECT_RELEASE_TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Append
           Write-Host "Release version prepared: $tag"
