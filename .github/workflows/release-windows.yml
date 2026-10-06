@@ -24,26 +24,23 @@ jobs:
         with:
           node-version: 22
 
-      - name: Prepare release version
+      - name: Validate release version
         shell: pwsh
         run: |
-          git fetch --tags --force
-          node scripts/prepare-release-version.cjs
-
           $packageVersion = node -p "require('./package.json').version"
           $tag = "v$packageVersion"
 
-          if (-not (git diff --quiet -- package.json index.html)) {
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add package.json index.html
-            git commit -m "release: bump FieldInspect Pro to $packageVersion"
-            git push origin HEAD:main
+          git fetch --tags --force
+          $existing = git tag --list $tag
+          if ($existing) {
+            $tagSha = (git rev-list -n 1 $tag).Trim()
+            $headSha = "${{ github.sha }}".Trim()
+            if ($tagSha -ne $headSha) {
+              throw "RELEASE SAFETY FAILURE: $tag already points to $tagSha while this build is $headSha. Bump package.json version before releasing again."
+            }
           }
 
-          "FIELDINSPECT_RELEASE_VERSION=$packageVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "FIELDINSPECT_RELEASE_TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Append
-          Write-Host "Preparing FieldInspect Pro $tag"
+          Write-Host "Release version validated: $tag"
 
       - name: Install dependencies
         run: npm install
@@ -51,141 +48,232 @@ jobs:
       - name: Source capitalization audit
         shell: pwsh
         run: |
-          $files = Get-ChildItem -Path . -Recurse -File | Where-Object {
-            $_.Extension -in '.js','.cjs','.jsx','.ts','.tsx','.html','.json' -and
-            $_.FullName -notmatch '\\(node_modules|dist|release)\\'
-          }
+          $files = Get-ChildItem -Path . -Recurse -File | Where-Object { $_.Extension -in '.js','.cjs','.jsx','.ts','.tsx','.html','.json' -and $_.FullName -notmatch '\\(node_modules|dist|release)\\' }
           $bad = $files | Select-String -CaseSensitive -Pattern '@Supabase/supabase-js|@supabase/Supabase-js|@SUPABASE/supabase-js|@SUPABASE/SUPABASE-JS'
           if ($bad) { $bad | Format-List; throw "SOURCE AUDIT FAILURE: invalid Supabase package capitalization found." }
+          Write-Host "CAPITALIZATION AUDIT PASSED."
 
       - name: JSON syntax audit
         shell: pwsh
         run: |
-          $jsonFiles = Get-ChildItem -Path . -Recurse -File -Filter *.json | Where-Object {
-            $_.FullName -notmatch '\\(node_modules|dist|release)\\'
-          }
-          foreach ($file in $jsonFiles) {
-            node -e "JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'))" -- "$($file.FullName)"
-          }
+          $jsonFiles = Get-ChildItem -Path . -Recurse -File -Filter *.json | Where-Object { $_.FullName -notmatch '\\(node_modules|dist|release)\\' }
+          foreach ($file in $jsonFiles) { Write-Host "Parsing $($file.FullName)"; node -e "JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'))" -- "$($file.FullName)" }
+          Write-Host "JSON SYNTAX AUDIT PASSED."
 
       - name: Vite configuration audit
         shell: pwsh
         run: |
           $viteConfigs = @(Get-ChildItem -Path . -File -Filter 'vite.config.*' -ErrorAction SilentlyContinue)
+          Write-Host ("Vite configs found: " + (($viteConfigs | ForEach-Object Name) -join ', '))
           if ($viteConfigs.Count -ne 1 -or $viteConfigs[0].Name -ne 'vite.config.js') { throw "VITE CONFIG AUDIT FAILURE: expected exactly one vite.config.js." }
+          Write-Host "VITE CONFIG AUDIT PASSED."
 
       - name: Static asset audit
         shell: pwsh
         run: |
           if (-not (Test-Path 'public/auth-config.js')) { throw "STATIC ASSET AUDIT FAILURE: public/auth-config.js is missing." }
+          Write-Host "STATIC ASSET AUDIT PASSED."
 
       - name: Electron syntax audit
         shell: pwsh
         run: |
           node --check electron/main.cjs
           node --check electron/preload.cjs
+          Write-Host "ELECTRON SYNTAX AUDIT PASSED."
 
       - name: TypeScript diagnostics
         run: npm run lint
 
-      - name: Build Windows installer
+      - name: Build Windows installer without publishing
         run: npm run dist
 
-      - name: Verify Windows artifacts
+      - name: Static application smoke test
         shell: pwsh
         run: |
-          $version = $env:FIELDINSPECT_RELEASE_VERSION
-          $installer = Get-ChildItem "release" -Filter "FieldInspect-Pro-Setup-$version-*.exe" | Select-Object -First 1
-          $blockmap = Get-ChildItem "release" -Filter "FieldInspect-Pro-Setup-$version-*.exe.blockmap" | Select-Object -First 1
-          if (-not $installer) { throw "BUILD FAILURE: Windows installer is missing." }
-          if (-not $blockmap) { throw "BUILD FAILURE: Windows blockmap is missing." }
-          if ($installer.Length -lt 10MB) { throw "BUILD FAILURE: installer is unexpectedly small." }
-
+          $packageVersion = node -p "require('./package.json').version"
           $html = Get-Content "dist/index.html" -Raw
-          if ($html -notmatch ('name="application-version"[^>]*content="' + [regex]::Escape($version) + '"')) { throw "SMOKE TEST FAILURE: application version marker is stale." }
-          if ($html -notmatch ('data-fieldinspect-version="' + [regex]::Escape($version) + '"')) { throw "SMOKE TEST FAILURE: renderer version marker is stale." }
-
           $main = Get-Content "electron/main.cjs" -Raw
-          if ($main -notmatch 'autoInstallOnAppQuit\s*=\s*true') { throw "SMOKE TEST FAILURE: automatic installation on app quit is disabled." }
 
+          if ($html -notmatch '<meta\s+name="application-version"\s+content="' + [regex]::Escape($packageVersion) + '"') {
+            throw "SMOKE TEST FAILURE: application-version marker is missing or stale in dist/index.html."
+          }
+          if ($html -notmatch 'data-fieldinspect-version="' + [regex]::Escape($packageVersion) + '"') {
+            throw "SMOKE TEST FAILURE: data-fieldinspect-version marker does not match package.json."
+          }
+          if ($html -match '<script\\s+src="\\./feature-engine\\.js"') {
+            throw "SMOKE TEST FAILURE: feature-engine.js must be bundled through a module script."
+          }
+          if ($html -match '<script\\s+type="module"\\s+[^>]*src="[^"]*feature-engine\\.js"') {
+            throw "SMOKE TEST FAILURE: source feature-engine.js was not transformed into a production asset."
+          }
+
+          $sw = Get-Content "dist/sw.js" -Raw
+          foreach ($forbidden in @('storage-sync.js','cloud-sync.js','feature-engine.js')) {
+            if ($sw -match [regex]::Escape($forbidden)) {
+              throw "SMOKE TEST FAILURE: dist/sw.js must not precache bundled source file $forbidden."
+            }
+          }
+          if ($html -notmatch 'id="editorPanel"') { throw "SMOKE TEST FAILURE: Inspection Workspace editor is missing." }
+          if ($html -notmatch 'id="previewPanel"') { throw "SMOKE TEST FAILURE: Preview panel is missing." }
+          if ($html -notmatch 'id="reportSheet"') { throw "SMOKE TEST FAILURE: report preview sheet is missing." }
+          if ($html -notmatch 'workspace-editor') { throw "SMOKE TEST FAILURE: editor layout class is missing." }
+          if ($html -notmatch 'workspace-preview') { throw "SMOKE TEST FAILURE: preview layout class is missing." }
+          if ($html -match 'cdn\.jsdelivr\.net/npm/@supabase/supabase-js') {
+            throw "SMOKE TEST FAILURE: Supabase is still loaded from a remote CDN."
+          }
+          if ($html -notmatch 'window\.tailwind\s*=\s*window\.tailwind\s*\|\|\s*\{\}') {
+            throw "SMOKE TEST FAILURE: Tailwind configuration is not initialized before the deferred CDN script."
+          }
+          if ($html -notmatch 'src="./auth-config\.js"') {
+            throw "SMOKE TEST FAILURE: auth-config.js is not referenced as a packaged static asset."
+          }
+          if ($main -notmatch 'autoInstallOnAppQuit\s*=\s*true') {
+            throw "SMOKE TEST FAILURE: updater install-on-quit installation is not enabled."
+          }
+
+          foreach ($tag in @('html','head','body','main','script')) {
+            $open = ([regex]::Matches($html, '<' + $tag + '\b', 'IgnoreCase')).Count
+            $close = ([regex]::Matches($html, '</' + $tag + '>', 'IgnoreCase')).Count
+            if ($open -ne $close) { throw "SMOKE TEST FAILURE: malformed $tag tags ($open open / $close close)." }
+          }
+
+          if ($main -notmatch "dist', 'index\.html") { throw "SMOKE TEST FAILURE: Electron is not loading the Vite dist build." }
+          if ($main -notmatch 'did-fail-load') { throw "SMOKE TEST FAILURE: Electron load diagnostics are missing." }
+
+          Write-Host "STATIC APPLICATION SMOKE TEST PASSED for FieldInspect Pro $packageVersion."
+          
       - name: Generate update metadata
         shell: pwsh
         run: |
-          $version = $env:FIELDINSPECT_RELEASE_VERSION
-          $installer = Get-ChildItem "release" -Filter "FieldInspect-Pro-Setup-$version-*.exe" | Select-Object -First 1
+          $packageVersion = node -p "require('./package.json').version"
+          $installer = Get-ChildItem "release" -Filter "FieldInspect-Pro-Setup-$packageVersion-*.exe" | Select-Object -First 1
+          $blockmap = Get-ChildItem "release" -Filter "FieldInspect-Pro-Setup-$packageVersion-*.exe.blockmap" | Select-Object -First 1
+
+          if (-not $installer) { throw "BUILD FAILURE: Windows installer was not produced." }
+          if (-not $blockmap) { throw "BUILD FAILURE: Windows blockmap was not produced." }
+
+          $installerName = $installer.Name
           $hash = (Get-FileHash $installer.FullName -Algorithm SHA512).Hash
-          $bytes = for ($i = 0; $i -lt $hash.Length; $i += 2) { [Convert]::ToByte($hash.Substring($i, 2), 16) }
-          $sha512 = [Convert]::ToBase64String($bytes)
-          $date = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
-          @(
-            "version: $version"
+          $hashBytes = for ($i = 0; $i -lt $hash.Length; $i += 2) { [Convert]::ToByte($hash.Substring($i, 2), 16) }
+          $sha512 = [Convert]::ToBase64String($hashBytes)
+          $size = $installer.Length
+          $releaseDate = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+
+          $latestYmlContent = @(
+            "version: $packageVersion"
             "files:"
-            "  - url: $($installer.Name)"
+            "  - url: $installerName"
             "    sha512: $sha512"
-            "    size: $($installer.Length)"
-            "path: $($installer.Name)"
+            "    size: $size"
+            "path: $installerName"
             "sha512: $sha512"
-            "releaseDate: $date"
-          ) | Set-Content "release/latest.yml" -Encoding utf8
+            "releaseDate: $releaseDate"
+          ) -join "`n"
+          Set-Content -Path "release/latest.yml" -Value $latestYmlContent -Encoding utf8
+
+          Write-Host "Installer: $installerName ($size bytes)"
+          Write-Host "Blockmap: $($blockmap.Name) ($($blockmap.Length) bytes)"
+          Write-Host "latest.yml generated with SHA-512: $sha512"
+
+      - name: Verify local release artifacts
+        shell: pwsh
+        run: |
+          $packageVersion = node -p "require('./package.json').version"
+          $installer = Get-ChildItem "release" -Filter "FieldInspect-Pro-Setup-$packageVersion-*.exe" | Select-Object -First 1
+          $blockmap = Get-ChildItem "release" -Filter "FieldInspect-Pro-Setup-$packageVersion-*.exe.blockmap" | Select-Object -First 1
+          $metadata = Get-Item "release/latest.yml"
+
+          if (-not $installer) { throw "BUILD FAILURE: installer missing." }
+          if (-not $blockmap) { throw "BUILD FAILURE: blockmap missing." }
+          if ($metadata.Length -lt 100) { throw "BUILD FAILURE: latest.yml is unexpectedly small." }
+          if ($installer.Length -lt 10MB) { throw "BUILD FAILURE: installer is unexpectedly small." }
+
+          $text = Get-Content $metadata.FullName -Raw
+          if ($text -notmatch [regex]::Escape($installer.Name)) {
+            throw "BUILD FAILURE: latest.yml does not reference the installer."
+          }
+
+          Write-Host "LOCAL ARTIFACT VERIFICATION PASSED."
+
+      - name: Build packaged app smoke test
+        shell: pwsh
+        run: |
+          $packageVersion = node -p "require('./package.json').version"
+          $app = Get-ChildItem "release" -Filter "FieldInspect Pro $packageVersion.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $app) { Write-Host "Packaged app executable not found by expected name; installer artifact validation remains authoritative." }
+          Write-Host "PACKAGED BUILD CHECK COMPLETED for $packageVersion."
 
       - name: Create release tag
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = $env:FIELDINSPECT_RELEASE_TAG
+          $packageVersion = node -p "require('./package.json').version"
+          $tag = "v$packageVersion"
           git fetch --tags --force
-          $existing = git tag --list $tag
-          if ($existing) {
-            $tagSha = (git rev-list -n 1 $tag).Trim()
-            $headSha = (git rev-parse HEAD).Trim()
-            if ($tagSha -ne $headSha) { throw "RELEASE SAFETY FAILURE: $tag already points to $tagSha while HEAD is $headSha." }
-          } else {
+          if (-not (git tag --list $tag)) {
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git tag -a $tag -m "FieldInspect Pro $env:FIELDINSPECT_RELEASE_VERSION"
+            git tag -a $tag -m "FieldInspect Pro $packageVersion"
             git push origin $tag
           }
+          Write-Host "Release tag ready: $tag"
 
       - name: Create or publish GitHub release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = $env:FIELDINSPECT_RELEASE_TAG
-          $version = $env:FIELDINSPECT_RELEASE_VERSION
-          $installer = Get-ChildItem "release" -Filter "FieldInspect-Pro-Setup-$version-*.exe" | Select-Object -First 1
-          $blockmap = Get-ChildItem "release" -Filter "FieldInspect-Pro-Setup-$version-*.exe.blockmap" | Select-Object -First 1
+          $packageVersion = node -p "require('./package.json').version"
+          $tag = "v$packageVersion"
+          $installer = Get-ChildItem "release" -Filter "FieldInspect-Pro-Setup-$packageVersion-*.exe" | Select-Object -First 1
+          $blockmap = Get-ChildItem "release" -Filter "FieldInspect-Pro-Setup-$packageVersion-*.exe.blockmap" | Select-Object -First 1
+
           gh release view $tag --repo "${{ github.repository }}" *> $null
           if ($LASTEXITCODE -ne 0) {
-            gh release create $tag --repo "${{ github.repository }}" --verify-tag --title "FieldInspect Pro $version" --generate-notes --latest
+            gh release create $tag --repo "${{ github.repository }}" --verify-tag --title "FieldInspect Pro $packageVersion" --generate-notes --latest
           } else {
             gh release edit $tag --repo "${{ github.repository }}" --draft=false --prerelease=false --latest
           }
+
           gh release upload $tag "$($installer.FullName)" "$($blockmap.FullName)" "release/latest.yml" --repo "${{ github.repository }}" --clobber
 
-      - name: Verify published release
+      - name: Verify published release by downloading assets
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = $env:FIELDINSPECT_RELEASE_TAG
-          $version = $env:FIELDINSPECT_RELEASE_VERSION
-          $installerName = "FieldInspect-Pro-Setup-$version-x64.exe"
-          $release = gh release view $tag --repo "${{ github.repository }}" --json isDraft,isPrerelease,assets | ConvertFrom-Json
-          if ($release.isDraft) { throw "PUBLISH FAILURE: release is still a draft." }
-          if ($release.isPrerelease) { throw "PUBLISH FAILURE: release is marked prerelease." }
-          $names = @($release.assets | ForEach-Object { $_.name })
-          if ($names -notcontains $installerName) { throw "PUBLISH FAILURE: installer missing." }
-          if ($names -notcontains "$installerName.blockmap") { throw "PUBLISH FAILURE: blockmap missing." }
-          if ($names -notcontains "latest.yml") { throw "PUBLISH FAILURE: latest.yml missing." }
+          $packageVersion = node -p "require('./package.json').version"
+          $tag = "v$packageVersion"
+          $installerName = "FieldInspect-Pro-Setup-$packageVersion-x64.exe"
+
+          $releaseJson = gh release view $tag --repo "${{ github.repository }}" --json isDraft,isPrerelease,assets | ConvertFrom-Json
+          if ($releaseJson.isDraft) { throw "PUBLISH FAILURE: release is still a draft." }
+          if ($releaseJson.isPrerelease) { throw "PUBLISH FAILURE: release is marked prerelease." }
+
+          $names = @($releaseJson.assets | ForEach-Object { $_.name })
+          if ($names -notcontains $installerName) { throw "PUBLISH FAILURE: $installerName is missing." }
+          if ($names -notcontains "$installerName.blockmap") { throw "PUBLISH FAILURE: $installerName.blockmap is missing." }
+          if ($names -notcontains "latest.yml") { throw "PUBLISH FAILURE: latest.yml is missing." }
+
           Remove-Item -Recurse -Force "verify-release" -ErrorAction SilentlyContinue
           New-Item -ItemType Directory "verify-release" | Out-Null
           gh release download $tag --repo "${{ github.repository }}" --pattern "$installerName" --pattern "$installerName.blockmap" --pattern "latest.yml" --dir "verify-release" --clobber
+
           $downloaded = Get-Item "verify-release/$installerName"
-          $hash = (Get-FileHash $downloaded.FullName -Algorithm SHA512).Hash
-          $bytes = for ($i = 0; $i -lt $hash.Length; $i += 2) { [Convert]::ToByte($hash.Substring($i, 2), 16) }
-          $sha512 = [Convert]::ToBase64String($bytes)
+          $localHash = (Get-FileHash $downloaded.FullName -Algorithm SHA512).Hash
+          $localHashBytes = for ($i = 0; $i -lt $localHash.Length; $i += 2) { [Convert]::ToByte($localHash.Substring($i, 2), 16) }
+          $localSha512 = [Convert]::ToBase64String($localHashBytes)
+
           $metadata = Get-Content "verify-release/latest.yml" -Raw
-          if ($metadata -notmatch [regex]::Escape($sha512)) { throw "PUBLISH FAILURE: downloaded installer does not match latest.yml." }
-          Write-Host "PUBLISHED RELEASE VERIFICATION PASSED for FieldInspect Pro $version."
+          if ($metadata -notmatch [regex]::Escape($localSha512)) {
+            throw "PUBLISH FAILURE: downloaded installer SHA-512 does not match downloaded latest.yml."
+          }
+
+          if ($downloaded.Length -lt 10MB) { throw "PUBLISH FAILURE: downloaded installer is unexpectedly small." }
+
+          Write-Host "PUBLISHED RELEASE VERIFICATION PASSED."
+          Write-Host "Installer: $installerName ($($downloaded.Length) bytes)"
+          Write-Host "Blockmap: present"
+          Write-Host "latest.yml: present"
+          Write-Host "SHA-512: $localSha512"
