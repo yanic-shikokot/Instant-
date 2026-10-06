@@ -47,7 +47,15 @@ jobs:
               $nextVersion = "$($current.Major).$($current.Minor).$($current.Build + 1)"
               Write-Host "No new version was supplied. Automatically advancing $packageVersion -> $nextVersion."
 
-              node -e 'const fs=require("fs"); const v=process.argv[1]; const p=JSON.parse(fs.readFileSync("package.json","utf8")); p.version=v; fs.writeFileSync("package.json",JSON.stringify(p,null,2)+"\n"); let h=fs.readFileSync("index.html","utf8"); h=h.replace(/name="application-version" content="[^"]+"/, "name=\"application-version\" content=\""+v+"\""); h=h.replace(/data-fieldinspect-version="[^"]+"/, "data-fieldinspect-version=\""+v+"\""); h=h.replace(/FieldInspect release marker: v[^,]+/, "FieldInspect release marker: v"+v); fs.writeFileSync("index.html",h);' -- "$nextVersion"
+              $package = Get-Content "package.json" -Raw | ConvertFrom-Json
+              $package.version = $nextVersion
+              $package | ConvertTo-Json -Depth 100 | Set-Content "package.json" -Encoding utf8
+
+              $html = Get-Content "index.html" -Raw
+              $html = $html -replace 'name="application-version" content="[^"]+"', "name=" + [char]34 + "application-version" + [char]34 + " content=" + [char]34 + $nextVersion + [char]34
+              $html = $html -replace 'data-fieldinspect-version="[^"]+"', "data-fieldinspect-version=" + [char]34 + $nextVersion + [char]34
+              $html = $html -replace 'FieldInspect release marker: v[^,]+', "FieldInspect release marker: v$nextVersion"
+              Set-Content "index.html" -Value $html -Encoding utf8
 
               git config user.name "github-actions[bot]"
               git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
