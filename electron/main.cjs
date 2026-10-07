@@ -236,7 +236,10 @@ app.whenReady().then(() => {
   registerIpcHandlers();
 
   session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
-    callback(permission === 'media');
+    // FieldInspect uses the browser geolocation API for the inspection site
+    // location field. Allow it in the packaged desktop app just like media
+    // permissions used by voice features.
+    callback(permission === 'media' || permission === 'geolocation');
   });
 
   // Initialize the updater before loading the renderer. A hung renderer must
