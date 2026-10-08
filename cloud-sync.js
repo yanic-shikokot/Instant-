@@ -168,23 +168,29 @@ async function push(){
     try{
       const s=record.state||{};
       const m=s.meta||{};
-      const {data,error}=await supabase.rpc('sync_inspection',{
-        p_local_id:String(record.id),
-        p_title:record.projectName||m.projectName||'Untitled inspection',
-        p_client_name:record.clientName||m.clientName||'',
-        p_site_name:record.siteLocation||m.siteLocation||'',
-        p_status:normalizeStatus(record.status||m.workflowStatus),
-        p_inspection_date:record.inspectionDate||m.inspectionDate||null,
-        p_data:serializeState(s),
-        p_created_at:record.createdAt||null,
-        p_updated_at:record.updatedAt||new Date().toISOString()
-      });
+      // Timeout each record independently. The previous implementation timed
+      // out the entire push() call after 15 seconds, so a perfectly healthy
+      // account with several inspections could always hit the aggregate limit.
+      const {data,error}=await withCloudTimeout(
+        supabase.rpc('sync_inspection',{
+          p_local_id:String(record.id),
+          p_title:record.projectName||m.projectName||'Untitled inspection',
+          p_client_name:record.clientName||m.clientName||'',
+          p_site_name:record.siteLocation||m.siteLocation||'',
+          p_status:normalizeStatus(record.status||m.workflowStatus),
+          p_inspection_date:record.inspectionDate||m.inspectionDate||null,
+          p_data:serializeState(s),
+          p_created_at:record.createdAt||null,
+          p_updated_at:record.updatedAt||new Date().toISOString()
+        }),
+        'Cloud inspection upload'
+      );
       if(error)throw error;
       if(!data?.id)throw new Error('Cloud inspection write was not acknowledged by Supabase.');
       pushed++;
     }catch(error){
       failed.push({id:record.id,message:error?.message||'Cloud upload failed',code:error?.code||''});
-      console.error('FieldInspect cloud record push failed:',record.id,error);
+      console.warn('FieldInspect cloud record push deferred:',record.id,error);
     }
   }
   return {count:pushed,failed};
@@ -264,7 +270,7 @@ async function sync(options={}){
       // Always process permanent deletions before uploads. A record in the
       // local trash must never be recreated in the cloud.
       const deleted=await withCloudTimeout(deleteCloudRecords(readTrash()),'Cloud deletion');
-      const pushed=await withCloudTimeout(push(),'Cloud upload');
+      const pushed=await push();
       const finalPull=await withCloudTimeout(pull(),'Cloud verification download');
 
       const totalFailures=deleted.failed.length+pushed.failed.length;
