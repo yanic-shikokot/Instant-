@@ -956,13 +956,9 @@ async function addPhotos(i,files){
    const compressed=await compressImage(file,1400,.78);
    const watermarked=await applyPhotoWatermark(compressed,{reportId:state.meta.reportId,projectName:state.meta.projectName});
    const photo={id:makeId()+'-PHOTO',data:watermarked,name:file.name,caption:'',addedAt:new Date().toISOString(),watermarkText:(state.meta.reportId||state.meta.projectName||'').trim()};
-   if(window.FIELDINSPECT_AUTH_USER&&window.FIELDINSPECT_STORAGE){
-    try{
-     await window.FIELDINSPECT_STORAGE.uploadPhoto(state,photo);
-    }catch(uploadError){
-     console.error('FieldInspect photo cloud upload failed:',uploadError);
-     toast('Photo kept locally because cloud evidence upload failed.');
-    }
+   if(window.FIELDINSPECT_AUTH_USER&&navigator.onLine&&window.FIELDINSPECT_STORAGE){
+    void window.FIELDINSPECT_STORAGE.uploadPhoto(state,photo)
+      .catch(uploadError=>console.warn('FieldInspect background photo upload skipped:',uploadError));
    }
    item.photos.push(photo);
   }catch(e){
