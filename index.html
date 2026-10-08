@@ -426,16 +426,22 @@ function loadState(){
  }
 }
 function stateForPersistence(source){
+ // IndexedDB is the primary local source of truth. Keep locally available
+ // evidence data in the persisted state so PDF/preview remain usable offline.
  const copy=JSON.parse(JSON.stringify(source));
  copy.items=(copy.items||[]).map(item=>({
   ...item,
   photos:(item.photos||[]).map(photo=>{
    const p={...photo};
-   if(p.storagePath){delete p.data;delete p.url}
+   delete p.url; // signed/temporary URLs must never become the offline source.
    return p;
   })
  }));
- copy.attachments=[];
+ copy.attachments=(copy.attachments||[]).map(attachment=>{
+  const a={...attachment};
+  delete a.file; // File objects are transient; data URLs remain local.
+  return a;
+ });
  return copy;
 }
 window.FIELDINSPECT_SERIALIZE_STATE=stateForPersistence;
@@ -531,20 +537,43 @@ window.addEventListener('beforeunload',()=>{ autoSaveDraftToHistory('beforeunloa
 window.addEventListener('pagehide',()=>{ autoSaveDraftToHistory('beforeunload'); });
 
 async function init(){
+ // Local initialization is allowed to wait for IndexedDB, but never for Supabase
+ // or any network request. IndexedDB is the authoritative local workspace store.
+ if(window.FIELDINSPECT_STORAGE?.initializeLocalStore){
+  try{
+   const scope=window.FIELDINSPECT_AUTH_USER?.id||window.FIELDINSPECT_AUTH_USER?.email||'anonymous';
+   await window.FIELDINSPECT_STORAGE.initializeLocalStore(scope);
+  }catch(e){
+   console.warn('FieldInspect local store initialization note:',e);
+  }
+ }
  if(!state.meta.reportId)state.meta.reportId=makeId();
  if(!state.meta.storageId)state.meta.storageId=state.meta.reportId;
  if(!state.meta.inspectionDate)state.meta.inspectionDate=today();
- bindFields();renderThemes();renderDefects();renderReport();setupSignatures();if(window.lucide?.createIcons)window.lucide.createIcons();
- if(window.FIELDINSPECT_STORAGE?.hydrate){try{await window.FIELDINSPECT_STORAGE.hydrate(state);await ensurePhotoWatermarks();renderDefects();renderReport()}catch(e){console.error('FieldInspect evidence hydration failed:',e)}}
+
  if(window.FIELDINSPECT_STORAGE?.loadActiveState){
   try{
    const idbState=await window.FIELDINSPECT_STORAGE.loadActiveState();
-   if(idbState && (!state.items?.length && Array.isArray(idbState.items) && idbState.items.length)){
-    state={...structuredClone(DEFAULT_STATE),...idbState};
-    bindFields();renderThemes();await ensurePhotoWatermarks();renderDefects();renderReport();
+   if(idbState){
+    state={...structuredClone(DEFAULT_STATE),...idbState,
+      meta:{...structuredClone(DEFAULT_STATE.meta),...(idbState.meta||{})},
+      signatures:{...structuredClone(DEFAULT_STATE.signatures),...(idbState.signatures||{})},
+      items:Array.isArray(idbState.items)?idbState.items:[],
+      attachments:Array.isArray(idbState.attachments)?idbState.attachments:[]
+    };
    }
   }catch(e){console.warn('FieldInspect IndexedDB draft restore note:',e)}
  }
+
+ bindFields();renderThemes();applyUiTheme();renderDefects();renderReport();setupSignatures();
+ if(window.lucide?.createIcons)window.lucide.createIcons();
+
+ // Cloud evidence hydration is strictly best-effort and never runs offline.
+ if(window.FIELDINSPECT_STORAGE?.hydrate && window.FIELDINSPECT_AUTH_USER && navigator.onLine){
+  try{await window.FIELDINSPECT_STORAGE.hydrate(state)}catch(e){console.warn('FieldInspect evidence hydration skipped:',e)}
+ }
+ try{await ensurePhotoWatermarks()}catch(e){console.warn('FieldInspect photo watermark pass skipped:',e)}
+ renderDefects();renderReport();
  window.addEventListener('resize',()=>{
   if(window.innerWidth>=640){
    document.getElementById('editorPanel')?.classList.remove('hidden');
@@ -629,10 +658,8 @@ if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
 }
 
 document.addEventListener('click',e=>{const menu=document.getElementById('designMenu'),button=document.getElementById('designMenuButton');if(menu&&!menu.classList.contains('hidden')&&!menu.contains(e.target)&&!button?.contains(e.target))toggleDesignMenu(false)});
-window.addEventListener('DOMContentLoaded',()=>{
- applyUiTheme();
- try{init()}catch(error){console.error('FieldInspect initialization failed:',error);}
-});
+// bootFieldInspect() above is the single application bootstrap. Do not call init()
+ // a second time from another DOMContentLoaded listener.
 function bindFields(){
  const map={reportId:['meta','reportId'],inspectionDate:['meta','inspectionDate'],projectName:['meta','projectName'],inspectorName:['meta','inspectorName'],clientName:['meta','clientName'],siteLocation:['meta','siteLocation'],conditions:['meta','conditions'],overallStatus:['meta','overallStatus'],workflowStatus:['meta','workflowStatus']};
  Object.entries(map).forEach(([id,path])=>{
@@ -703,7 +730,11 @@ async function autoSaveDraftToHistory(reason='autosave'){
   // This function lives in the main application scope. Do not call the
   // history IIFE's private snapshotState(), because that function is not
   // visible here and would make New inspection fail before History is written.
-  if(window.FIELDINSPECT_STORAGE&&window.FIELDINSPECT_AUTH_USER){try{await window.FIELDINSPECT_STORAGE.ensureStored(state)}catch(e){console.error('FieldInspect evidence migration failed:',e)}}
+  // Save locally first. Cloud evidence upload is secondary and must never block
+  // New/Save/History when the device is offline or the network is slow.
+  if(window.FIELDINSPECT_STORAGE&&window.FIELDINSPECT_AUTH_USER&&navigator.onLine){
+   void window.FIELDINSPECT_STORAGE.ensureStored(state).catch(e=>console.warn('FieldInspect background evidence upload skipped:',e));
+  }
   const copy=stateForPersistence(state),now=new Date().toISOString(),id=copy.meta.reportId||makeId();
   copy.meta.reportId=id;state.meta.reportId=id;
   const list=readHistory(),existingIndex=list.findIndex(x=>x.reportId===id),previous=existingIndex>=0?list[existingIndex]:null;
@@ -996,8 +1027,8 @@ async function ensurePhotoWatermarks(){
     photo.data=await applyPhotoWatermark(photo.data,{reportId:state.meta.reportId,projectName:state.meta.projectName});
     photo.watermarkText=(state.meta.reportId||state.meta.projectName||'').trim();
     changed=true;
-    if(window.FIELDINSPECT_AUTH_USER&&photo.storagePath&&window.FIELDINSPECT_STORAGE?.uploadPhoto){
-     await window.FIELDINSPECT_STORAGE.uploadPhoto(state,photo);
+    if(window.FIELDINSPECT_AUTH_USER&&navigator.onLine&&photo.storagePath&&window.FIELDINSPECT_STORAGE?.uploadPhoto){
+     void window.FIELDINSPECT_STORAGE.uploadPhoto(state,photo).catch(error=>console.warn('FieldInspect background watermark upload skipped:',error));
     }
    }catch(error){
     console.warn('FieldInspect photo watermark migration failed:',error);
@@ -1298,8 +1329,8 @@ window.handleQuickCameraCapture=async function(files){
   }else{
    lastItem.photos.push(photo);
   }
-  if(window.FIELDINSPECT_AUTH_USER&&window.FIELDINSPECT_STORAGE){
-   try{await window.FIELDINSPECT_STORAGE.uploadPhoto(state,photo);}catch(_){}
+  if(window.FIELDINSPECT_AUTH_USER&&navigator.onLine&&window.FIELDINSPECT_STORAGE){
+   void window.FIELDINSPECT_STORAGE.uploadPhoto(state,photo).catch(error=>console.warn('FieldInspect background photo upload skipped:',error));
   }
   persist();
   mobileTab('editor');
@@ -1385,7 +1416,9 @@ window.handleQuickCameraCapture=async function(files){
   try{
    const list=readHistory(),id=state.meta.reportId||makeId(),idx=list.findIndex(r=>r.reportId===id),created=idx<0;
    if(!state.meta.storageId)state.meta.storageId=state.meta.reportId||makeId();
-   if(window.FIELDINSPECT_STORAGE&&window.FIELDINSPECT_AUTH_USER)await window.FIELDINSPECT_STORAGE.ensureStored(state);
+   if(window.FIELDINSPECT_STORAGE&&window.FIELDINSPECT_AUTH_USER&&navigator.onLine){
+    void window.FIELDINSPECT_STORAGE.ensureStored(state).catch(e=>console.warn('FieldInspect background evidence upload skipped:',e));
+   }
    const copy=stateForPersistence(state),now=new Date().toISOString();
    copy.meta.reportId=id;state.meta.reportId=id;
    const prev=idx>=0?list[idx]:null;
