@@ -426,16 +426,22 @@ function loadState(){
  }
 }
 function stateForPersistence(source){
+ // IndexedDB is the primary local source of truth. Keep locally available
+ // evidence data in the persisted state so PDF/preview remain usable offline.
  const copy=JSON.parse(JSON.stringify(source));
  copy.items=(copy.items||[]).map(item=>({
   ...item,
   photos:(item.photos||[]).map(photo=>{
    const p={...photo};
-   if(p.storagePath){delete p.data;delete p.url}
+   delete p.url; // signed/temporary URLs must never become the offline source.
    return p;
   })
  }));
- copy.attachments=[];
+ copy.attachments=(copy.attachments||[]).map(attachment=>{
+  const a={...attachment};
+  delete a.file; // File objects are transient; data URLs remain local.
+  return a;
+ });
  return copy;
 }
 window.FIELDINSPECT_SERIALIZE_STATE=stateForPersistence;
@@ -508,6 +514,18 @@ window.toast=toast;
 window.FIELDINSPECT_GET_STATE=()=>state;
 window.FIELDINSPECT_PERSIST=()=>persist();
 window.FIELDINSPECT_RENDER=()=>renderReport();
+window.FIELDINSPECT_CLEAR_AUTH_WORKSPACE=()=>{
+ try{
+  state=structuredClone(DEFAULT_STATE);
+  state.meta.reportId=makeId();
+  state.meta.storageId=state.meta.reportId;
+  state.meta.inspectionDate=today();
+  bindFields();renderThemes();applyUiTheme();renderDefects();renderReport();setupSignatures();
+  persistNow();
+ }catch(error){
+  console.error('FieldInspect sign-out workspace reset failed:',error);
+ }
+};
 function today(){return new Date().toISOString().slice(0,10)}
 function makeId(){const d=today().replaceAll('-','');return 'REP-'+d+'-'+Math.random().toString(36).slice(2,6).toUpperCase()}
 // Start the core workspace exactly once. Without this bootstrap, the renderer
@@ -531,20 +549,43 @@ window.addEventListener('beforeunload',()=>{ autoSaveDraftToHistory('beforeunloa
 window.addEventListener('pagehide',()=>{ autoSaveDraftToHistory('beforeunload'); });
 
 async function init(){
+ // Local initialization is allowed to wait for IndexedDB, but never for Supabase
+ // or any network request. IndexedDB is the authoritative local workspace store.
+ if(window.FIELDINSPECT_STORAGE?.initializeLocalStore){
+  try{
+   const scope=window.FIELDINSPECT_AUTH_USER?.id||window.FIELDINSPECT_AUTH_USER?.email||'anonymous';
+   await window.FIELDINSPECT_STORAGE.initializeLocalStore(scope);
+  }catch(e){
+   console.warn('FieldInspect local store initialization note:',e);
+  }
+ }
  if(!state.meta.reportId)state.meta.reportId=makeId();
  if(!state.meta.storageId)state.meta.storageId=state.meta.reportId;
  if(!state.meta.inspectionDate)state.meta.inspectionDate=today();
- bindFields();renderThemes();renderDefects();renderReport();setupSignatures();if(window.lucide?.createIcons)window.lucide.createIcons();
- if(window.FIELDINSPECT_STORAGE?.hydrate){try{await window.FIELDINSPECT_STORAGE.hydrate(state);await ensurePhotoWatermarks();renderDefects();renderReport()}catch(e){console.error('FieldInspect evidence hydration failed:',e)}}
+
  if(window.FIELDINSPECT_STORAGE?.loadActiveState){
   try{
    const idbState=await window.FIELDINSPECT_STORAGE.loadActiveState();
-   if(idbState && (!state.items?.length && Array.isArray(idbState.items) && idbState.items.length)){
-    state={...structuredClone(DEFAULT_STATE),...idbState};
-    bindFields();renderThemes();await ensurePhotoWatermarks();renderDefects();renderReport();
+   if(idbState){
+    state={...structuredClone(DEFAULT_STATE),...idbState,
+      meta:{...structuredClone(DEFAULT_STATE.meta),...(idbState.meta||{})},
+      signatures:{...structuredClone(DEFAULT_STATE.signatures),...(idbState.signatures||{})},
+      items:Array.isArray(idbState.items)?idbState.items:[],
+      attachments:Array.isArray(idbState.attachments)?idbState.attachments:[]
+    };
    }
   }catch(e){console.warn('FieldInspect IndexedDB draft restore note:',e)}
  }
+
+ bindFields();renderThemes();applyUiTheme();renderDefects();renderReport();setupSignatures();
+ if(window.lucide?.createIcons)window.lucide.createIcons();
+
+ // Cloud evidence hydration is strictly best-effort and never runs offline.
+ if(window.FIELDINSPECT_STORAGE?.hydrate && window.FIELDINSPECT_AUTH_USER && navigator.onLine){
+  try{await window.FIELDINSPECT_STORAGE.hydrate(state)}catch(e){console.warn('FieldInspect evidence hydration skipped:',e)}
+ }
+ try{await ensurePhotoWatermarks()}catch(e){console.warn('FieldInspect photo watermark pass skipped:',e)}
+ renderDefects();renderReport();
  window.addEventListener('resize',()=>{
   if(window.innerWidth>=640){
    document.getElementById('editorPanel')?.classList.remove('hidden');
@@ -629,10 +670,8 @@ if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
 }
 
 document.addEventListener('click',e=>{const menu=document.getElementById('designMenu'),button=document.getElementById('designMenuButton');if(menu&&!menu.classList.contains('hidden')&&!menu.contains(e.target)&&!button?.contains(e.target))toggleDesignMenu(false)});
-window.addEventListener('DOMContentLoaded',()=>{
- applyUiTheme();
- try{init()}catch(error){console.error('FieldInspect initialization failed:',error);}
-});
+// bootFieldInspect() above is the single application bootstrap. Do not call init()
+ // a second time from another DOMContentLoaded listener.
 function bindFields(){
  const map={reportId:['meta','reportId'],inspectionDate:['meta','inspectionDate'],projectName:['meta','projectName'],inspectorName:['meta','inspectorName'],clientName:['meta','clientName'],siteLocation:['meta','siteLocation'],conditions:['meta','conditions'],overallStatus:['meta','overallStatus'],workflowStatus:['meta','workflowStatus']};
  Object.entries(map).forEach(([id,path])=>{
@@ -703,7 +742,11 @@ async function autoSaveDraftToHistory(reason='autosave'){
   // This function lives in the main application scope. Do not call the
   // history IIFE's private snapshotState(), because that function is not
   // visible here and would make New inspection fail before History is written.
-  if(window.FIELDINSPECT_STORAGE&&window.FIELDINSPECT_AUTH_USER){try{await window.FIELDINSPECT_STORAGE.ensureStored(state)}catch(e){console.error('FieldInspect evidence migration failed:',e)}}
+  // Save locally first. Cloud evidence upload is secondary and must never block
+  // New/Save/History when the device is offline or the network is slow.
+  if(window.FIELDINSPECT_STORAGE&&window.FIELDINSPECT_AUTH_USER&&navigator.onLine){
+   void window.FIELDINSPECT_STORAGE.ensureStored(state).catch(e=>console.warn('FieldInspect background evidence upload skipped:',e));
+  }
   const copy=stateForPersistence(state),now=new Date().toISOString(),id=copy.meta.reportId||makeId();
   copy.meta.reportId=id;state.meta.reportId=id;
   const list=readHistory(),existingIndex=list.findIndex(x=>x.reportId===id),previous=existingIndex>=0?list[existingIndex]:null;
@@ -913,13 +956,9 @@ async function addPhotos(i,files){
    const compressed=await compressImage(file,1400,.78);
    const watermarked=await applyPhotoWatermark(compressed,{reportId:state.meta.reportId,projectName:state.meta.projectName});
    const photo={id:makeId()+'-PHOTO',data:watermarked,name:file.name,caption:'',addedAt:new Date().toISOString(),watermarkText:(state.meta.reportId||state.meta.projectName||'').trim()};
-   if(window.FIELDINSPECT_AUTH_USER&&window.FIELDINSPECT_STORAGE){
-    try{
-     await window.FIELDINSPECT_STORAGE.uploadPhoto(state,photo);
-    }catch(uploadError){
-     console.error('FieldInspect photo cloud upload failed:',uploadError);
-     toast('Photo kept locally because cloud evidence upload failed.');
-    }
+   if(window.FIELDINSPECT_AUTH_USER&&navigator.onLine&&window.FIELDINSPECT_STORAGE){
+    void window.FIELDINSPECT_STORAGE.uploadPhoto(state,photo)
+      .catch(uploadError=>console.warn('FieldInspect background photo upload skipped:',uploadError));
    }
    item.photos.push(photo);
   }catch(e){
@@ -996,8 +1035,8 @@ async function ensurePhotoWatermarks(){
     photo.data=await applyPhotoWatermark(photo.data,{reportId:state.meta.reportId,projectName:state.meta.projectName});
     photo.watermarkText=(state.meta.reportId||state.meta.projectName||'').trim();
     changed=true;
-    if(window.FIELDINSPECT_AUTH_USER&&photo.storagePath&&window.FIELDINSPECT_STORAGE?.uploadPhoto){
-     await window.FIELDINSPECT_STORAGE.uploadPhoto(state,photo);
+    if(window.FIELDINSPECT_AUTH_USER&&navigator.onLine&&photo.storagePath&&window.FIELDINSPECT_STORAGE?.uploadPhoto){
+     void window.FIELDINSPECT_STORAGE.uploadPhoto(state,photo).catch(error=>console.warn('FieldInspect background watermark upload skipped:',error));
     }
    }catch(error){
     console.warn('FieldInspect photo watermark migration failed:',error);
@@ -1298,8 +1337,8 @@ window.handleQuickCameraCapture=async function(files){
   }else{
    lastItem.photos.push(photo);
   }
-  if(window.FIELDINSPECT_AUTH_USER&&window.FIELDINSPECT_STORAGE){
-   try{await window.FIELDINSPECT_STORAGE.uploadPhoto(state,photo);}catch(_){}
+  if(window.FIELDINSPECT_AUTH_USER&&navigator.onLine&&window.FIELDINSPECT_STORAGE){
+   void window.FIELDINSPECT_STORAGE.uploadPhoto(state,photo).catch(error=>console.warn('FieldInspect background photo upload skipped:',error));
   }
   persist();
   mobileTab('editor');
@@ -1318,66 +1357,24 @@ window.handleQuickCameraCapture=async function(files){
  'use strict';
  function historyKey(){const u=window.FIELDINSPECT_AUTH_USER||null;return 'fieldinspect-pro-v2:history:'+(u?.id||u?.email||'anonymous')}
  function trashKey(){const u=window.FIELDINSPECT_AUTH_USER||null;return 'fieldinspect-pro-v2:trash:'+(u?.id||u?.email||'anonymous')}
- function readHistory(){try{const v=JSON.parse(localStorage.getItem(historyKey())||'[]');return Array.isArray(v)?v:[]}catch(e){return[]}}
- function writeHistory(v){
-  const key=historyKey();
-  const records=Array.isArray(v)?v.slice(0,100):[];
-  const tryWrite=(list)=>{
-    try{
-      localStorage.setItem(key,JSON.stringify(list));
-      return true;
-    }catch(e){
-      console.error('FieldInspect history write failed:',e);
-      return false;
-    }
-  };
-
-  if(tryWrite(records))return true;
-
-  // Free the duplicated active draft before retrying.
-  try{localStorage.removeItem(STORAGE+':draft')}catch(e){}
-  if(tryWrite(records))return true;
-
-  // If old history consumes the remaining quota, preserve the newest entries.
-  for(let keep=records.length-1;keep>=1;keep--){
-    if(tryWrite(records.slice(0,keep))){
-      toast('Inspection saved. Older history entries were trimmed because browser storage is full.');
-      return true;
-    }
-  }
-
-  // Last-resort compact mode removes only binary evidence from History so the
-  // inspection metadata/findings remain recoverable.
-  const compact=records.map(r=>{
-    const stateCopy=r?.state?JSON.parse(JSON.stringify(r.state)):null;
-    if(stateCopy){
-      stateCopy.attachments=[];
-      if(Array.isArray(stateCopy.items)){
-        stateCopy.items=stateCopy.items.map(item=>({
-          ...item,
-          photos:Array.isArray(item.photos)
-            ? item.photos.map(p=>({caption:p?.caption||'',name:p?.name||'',addedAt:p?.addedAt||''}))
-            : []
-        }));
-      }
-    }
-    return {...r,state:stateCopy,_storageMode:'compact'};
-  });
-  if(tryWrite(compact)){
-    toast('Inspection saved to History. Large photo/document evidence remains in the active draft.');
-    return true;
-  }
-
-  if(records.length&&tryWrite(compact.slice(0,1))){
-    toast('Inspection saved to History. Older history entries were removed because browser storage is full.');
-    return true;
-  }
-
-  toast('Inspection could not be saved. Browser storage is unavailable or full.');
-  return false;
+ function readHistory(){
+  if(window.FIELDINSPECT_STORAGE?.getHistorySync) return window.FIELDINSPECT_STORAGE.getHistorySync();
+  try{const v=JSON.parse(localStorage.getItem(historyKey())||'[]');return Array.isArray(v)?v:[]}catch(e){return[]}
  }
- function readTrash(){try{const v=JSON.parse(localStorage.getItem(trashKey())||'[]');return Array.isArray(v)?v:[]}catch(e){return[]}}
- function writeTrash(v){try{localStorage.setItem(trashKey(),JSON.stringify(v.slice(0,100)));return true}catch(e){toast('Recently deleted could not be saved.');return false}}
+ function writeHistory(v){
+  const records=Array.isArray(v)?v.slice(0,100):[];
+  if(window.FIELDINSPECT_STORAGE?.setHistorySync)return window.FIELDINSPECT_STORAGE.setHistorySync(records);
+  try{localStorage.setItem(historyKey(),JSON.stringify(records));return true}catch(e){console.error('FieldInspect history write failed:',e);return false}
+ }
+ function readTrash(){
+  if(window.FIELDINSPECT_STORAGE?.getTrashSync)return window.FIELDINSPECT_STORAGE.getTrashSync();
+  try{const v=JSON.parse(localStorage.getItem(trashKey())||'[]');return Array.isArray(v)?v:[]}catch(e){return[]}
+ }
+ function writeTrash(v){
+  const records=Array.isArray(v)?v.slice(0,100):[];
+  if(window.FIELDINSPECT_STORAGE?.setTrashSync)return window.FIELDINSPECT_STORAGE.setTrashSync(records);
+  try{localStorage.setItem(trashKey(),JSON.stringify(records));return true}catch(e){toast('Recently deleted could not be saved.');return false}
+ }
  window.readHistory=readHistory;window.writeHistory=writeHistory;
  window.readTrash=readTrash;window.writeTrash=writeTrash;
  function snapshotState(){return JSON.parse(JSON.stringify(state))}
@@ -1385,7 +1382,9 @@ window.handleQuickCameraCapture=async function(files){
   try{
    const list=readHistory(),id=state.meta.reportId||makeId(),idx=list.findIndex(r=>r.reportId===id),created=idx<0;
    if(!state.meta.storageId)state.meta.storageId=state.meta.reportId||makeId();
-   if(window.FIELDINSPECT_STORAGE&&window.FIELDINSPECT_AUTH_USER)await window.FIELDINSPECT_STORAGE.ensureStored(state);
+   if(window.FIELDINSPECT_STORAGE&&window.FIELDINSPECT_AUTH_USER&&navigator.onLine){
+    void window.FIELDINSPECT_STORAGE.ensureStored(state).catch(e=>console.warn('FieldInspect background evidence upload skipped:',e));
+   }
    const copy=stateForPersistence(state),now=new Date().toISOString();
    copy.meta.reportId=id;state.meta.reportId=id;
    const prev=idx>=0?list[idx]:null;
@@ -1563,6 +1562,21 @@ function resetMessage(message, kind='error'){
   const el=document.getElementById('resetMessage'); if(!el)return;
   el.textContent=message; el.className='mt-4 rounded-xl px-3 py-2 text-[11px] font-semibold '+(kind==='success'?'bg-emerald-50 text-emerald-700 border border-emerald-200':'bg-rose-50 text-rose-700 border border-rose-200');
 }
+function publishAuthState(user){
+  authUser=user||null;
+  window.FIELDINSPECT_AUTH_USER=authUser;
+  if(!authUser&&window.FIELDINSPECT_CLEAR_AUTH_WORKSPACE){
+    window.FIELDINSPECT_CLEAR_AUTH_WORKSPACE();
+  }
+  updateAuthUI();
+  const scope=authUser?.id||authUser?.email||'anonymous';
+  if(window.FIELDINSPECT_STORAGE?.switchLocalScope){
+    void window.FIELDINSPECT_STORAGE.switchLocalScope(scope)
+      .then(()=>{try{renderHistory?.();renderTrash?.()}catch(_){};})
+      .catch(error=>console.warn('FieldInspect local account scope switch skipped:',error));
+  }
+  window.dispatchEvent(new CustomEvent('fieldinspect:auth-changed',{detail:{user:authUser}}));
+}
 function updateAuthUI(){
   const btn=document.getElementById('accountButton');
   if(btn){
@@ -1622,7 +1636,7 @@ window.submitAuth=async function(){
       const {data,error}=await supabase.auth.signUp({email,password,options:{data:{full_name:name},emailRedirectTo:authRedirectUrl()||undefined}});
       if(error)throw error;
       if(data.session){
-        authUser=data.session.user; window.FIELDINSPECT_AUTH_USER=authUser; 
+        publishAuthState(data.session.user);
         authMessage('Account created successfully.','success');
         closeAuth();
       }else{
@@ -1631,12 +1645,7 @@ window.submitAuth=async function(){
     }else{
       const {data,error}=await supabase.auth.signInWithPassword({email,password});
       if(error)throw error;
-      authUser=data.user;
-      window.FIELDINSPECT_AUTH_USER=authUser;
-      
-      updateAuthUI();
-      
-      
+      publishAuthState(data.user);
       closeAuth();
       showToast('Signed in successfully.');
     }
@@ -1672,22 +1681,37 @@ window.saveProfile=async function(){
   if(!name){authMessage('Enter your full name.');return}
   const {data,error}=await supabase.auth.updateUser({data:{full_name:name}});
   if(error){authMessage(error.message);return}
-  authUser=data.user; authMessage('Profile updated.','success'); showToast('Profile updated.');
+  publishAuthState(data.user); authMessage('Profile updated.','success'); showToast('Profile updated.');
 };
 window.signOutUser=async function(){
   if(!supabase)return;
   const {error}=await supabase.auth.signOut();
   if(error){authMessage(error.message);return}
-  authUser=null; window.FIELDINSPECT_AUTH_USER=null; closeAuth(); updateAuthUI(); showToast('Signed out.');
+  publishAuthState(null); closeAuth(); showToast('Signed out.');
 };
 window.addEventListener('DOMContentLoaded',async()=>{
   document.getElementById('authSetup')?.classList.toggle('hidden',supabaseReady);
-  if(!supabase){updateAuthUI();return}
-  const {data}=await supabase.auth.getSession();
-  authUser=data.session?.user||null; window.FIELDINSPECT_AUTH_USER=authUser; updateAuthUI(); 
-  supabase.auth.onAuthStateChange((_event,session)=>{
-    authUser=session?.user||null; window.FIELDINSPECT_AUTH_USER=authUser; updateAuthUI(); 
-  });
+  if(!supabase){publishAuthState(null);return}
+
+  // Authentication is deliberately non-blocking. The workspace is already
+  // usable from local storage/IndexedDB; a network/session failure must not
+  // prevent rendering or create an unhandled rejection.
+  try{
+    const {data}=await supabase.auth.getSession();
+    publishAuthState(data?.session?.user||null);
+  }catch(error){
+    console.warn('FieldInspect auth session unavailable; continuing offline:',error);
+    publishAuthState(null);
+  }
+
+  try{
+    supabase.auth.onAuthStateChange((_event,session)=>{
+      publishAuthState(session?.user||null);
+    });
+  }catch(error){
+    console.warn('FieldInspect auth listener unavailable:',error);
+  }
+
   const recovery=location.hash.includes('type=recovery');
   if(recovery){
     document.getElementById('resetModal').classList.remove('hidden');

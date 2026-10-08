@@ -137,7 +137,9 @@ async function hydrate(state) {
   const urls = await signPaths(paths);
   for (const item of (state.items || [])) {
     for (const photo of (item.photos || [])) {
-      if (photo.storagePath && urls.get(photo.storagePath)) photo.data = urls.get(photo.storagePath);
+      if (photo.storagePath && !String(photo.data || '').startsWith('data:') && urls.get(photo.storagePath)) {
+        photo.data = urls.get(photo.storagePath);
+      }
     }
   }
   for (const attachment of (state.attachments || [])) {
@@ -147,7 +149,7 @@ async function hydrate(state) {
 }
 
 async function ensureStored(state) {
-  if (!client() || !user()) return state;
+  if (!client() || !user() || typeof navigator !== 'undefined' && !navigator.onLine) return state;
   if (!storageKey(state)) state.meta.storageId = state.meta.reportId || ('INS-' + crypto.randomUUID());
 
   for (const item of (state.items || [])) {
@@ -248,7 +250,7 @@ async function deleteInspectionEvidence(stateOrStorageId) {
 }
 
 async function photoDataUrls(state) {
-  if (!client() || !user()) return state;
+  if (!client() || !user() || typeof navigator !== 'undefined' && !navigator.onLine) return state;
   for (const item of (state.items || [])) {
     for (const photo of (item.photos || [])) {
       if (!photo.data && photo.storagePath) {
@@ -269,9 +271,17 @@ async function photoDataUrls(state) {
 // IndexedDB Local Storage Fallback Engine
 // ==========================================
 const DB_NAME = 'fieldinspect_pro_db';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_ACTIVE = 'active_state';
 const STORE_INSPECTIONS = 'inspections_backup';
+const STORE_HISTORY_PRIMARY = 'history_primary';
+const STORE_TRASH_PRIMARY = 'trash_primary';
+
+let localScope = 'anonymous';
+let primaryHistory = [];
+let primaryTrash = [];
+let localStoreReady = null;
+let primaryWriteQueue = Promise.resolve();
 
 let idbInstance = null;
 
@@ -290,13 +300,29 @@ function openDB() {
       if (!db.objectStoreNames.contains(STORE_INSPECTIONS)) {
         db.createObjectStore(STORE_INSPECTIONS, { keyPath: 'id' });
       }
+      if (!db.objectStoreNames.contains(STORE_HISTORY_PRIMARY)) {
+        db.createObjectStore(STORE_HISTORY_PRIMARY, { keyPath: 'key' });
+      }
+      if (!db.objectStoreNames.contains(STORE_TRASH_PRIMARY)) {
+        db.createObjectStore(STORE_TRASH_PRIMARY, { keyPath: 'key' });
+      }
+      if (!db.objectStoreNames.contains(STORE_HISTORY_PRIMARY)) {
+        db.createObjectStore(STORE_HISTORY_PRIMARY, { keyPath: 'key' });
+      }
+      if (!db.objectStoreNames.contains(STORE_TRASH_PRIMARY)) {
+        db.createObjectStore(STORE_TRASH_PRIMARY, { keyPath: 'key' });
+      }
     };
     req.onsuccess = () => {
       idbInstance = req.result;
+      idbInstance.onversionchange = () => {
+        try { idbInstance.close(); } catch (_) {}
+        idbInstance = null;
+      };
       resolve(idbInstance);
     };
     req.onerror = () => reject(req.error);
-    req.onblocked = () => console.warn('FieldInspect IndexedDB blocked.');
+    req.onblocked = () => reject(new Error('IndexedDB upgrade is blocked by another open FieldInspect window.'));
   });
 }
 
@@ -348,12 +374,124 @@ async function idbGetAll(storeName) {
   });
 }
 
+function normalizeScope(scope) {
+  const value = String(scope || 'anonymous').trim();
+  return value || 'anonymous';
+}
+function scopedKey(id, scope=localScope) {
+  return normalizeScope(scope) + ':' + String(id);
+}
+function legacyHistoryKey(scope=localScope) {
+  return 'fieldinspect-pro-v2:history:' + normalizeScope(scope);
+}
+function legacyTrashKey(scope=localScope) {
+  return 'fieldinspect-pro-v2:trash:' + normalizeScope(scope);
+}
+function cloneJson(value, fallback=null) {
+  try { return JSON.parse(JSON.stringify(value)); } catch (_) { return fallback; }
+}
+function sortHistory(list) {
+  return (Array.isArray(list)?list:[]).slice(0,100).sort((a,b)=>(Date.parse(b?.updatedAt||0)||0)-(Date.parse(a?.updatedAt||0)||0));
+}
+async function readScopedStore(storeName, scope) {
+  const rows=await idbGetAll(storeName);
+  return rows.filter(r=>r?.scope===scope).map(r=>cloneJson(r.value)).filter(Boolean);
+}
+async function writeScopedStore(storeName, scope, values) {
+  const db=await openDB();
+  const clean=(Array.isArray(values)?values:[]).slice(0,100);
+  await new Promise((resolve,reject)=>{
+    const tx=db.transaction(storeName,'readwrite');
+    const store=tx.objectStore(storeName);
+    const existing=[];
+    const cursor=store.openCursor();
+    cursor.onsuccess=()=>{
+      const c=cursor.result;
+      if(!c){
+        existing.forEach(r=>store.delete(r.key));
+        clean.forEach(value=>{
+          const id=String(value?.id||value?.reportId||crypto.randomUUID());
+          store.put({key:scopedKey(id,scope),scope,value:cloneJson(value,{})});
+        });
+        return;
+      }
+      if(c.value?.scope===scope)existing.push(c.value);
+      c.continue();
+    };
+    tx.oncomplete=resolve;
+    tx.onerror=()=>reject(tx.error);
+    tx.onabort=()=>reject(tx.error||new Error('IndexedDB transaction aborted.'));
+  });
+}
+function mirrorLocal(key,value) {
+  try { localStorage.setItem(key,JSON.stringify((Array.isArray(value)?value:[]).slice(0,100))); }
+  catch (error) { console.warn('FieldInspect localStorage mirror unavailable:',error); }
+}
+function persistPrimaryCollections() {
+  const scope=localScope;
+  const history=cloneJson(primaryHistory,[]);
+  const trash=cloneJson(primaryTrash,[]);
+  primaryWriteQueue=primaryWriteQueue.then(async()=>{
+    await writeScopedStore(STORE_HISTORY_PRIMARY,scope,history);
+    await writeScopedStore(STORE_TRASH_PRIMARY,scope,trash);
+  }).catch(error=>console.error('FieldInspect IndexedDB primary history persistence failed:',error));
+  return primaryWriteQueue;
+}
+async function initializeLocalStore(scope='anonymous') {
+  localScope=normalizeScope(scope);
+  if(localStoreReady)return localStoreReady;
+  localStoreReady=(async()=>{
+    await openDB();
+    let history=await readScopedStore(STORE_HISTORY_PRIMARY,localScope);
+    let trash=await readScopedStore(STORE_TRASH_PRIMARY,localScope);
+    if(!history.length){
+      try { const legacy=JSON.parse(localStorage.getItem(legacyHistoryKey())||'[]'); if(Array.isArray(legacy))history=legacy; } catch (_) {}
+    }
+    if(!trash.length){
+      try { const legacy=JSON.parse(localStorage.getItem(legacyTrashKey())||'[]'); if(Array.isArray(legacy))trash=legacy; } catch (_) {}
+    }
+    primaryHistory=sortHistory(history);
+    primaryTrash=(Array.isArray(trash)?trash:[]).slice(0,100);
+    mirrorLocal(legacyHistoryKey(),primaryHistory);
+    mirrorLocal(legacyTrashKey(),primaryTrash);
+    if(history.length || trash.length)await persistPrimaryCollections();
+  })().catch(error=>{
+    console.error('FieldInspect local store initialization failed:',error);
+    primaryHistory=[];primaryTrash=[];
+  });
+  return localStoreReady;
+}
+async function switchLocalScope(scope='anonymous') {
+  const next=normalizeScope(scope);
+  if(next===localScope && localStoreReady)return localStoreReady;
+  const previous=localScope;
+  const anonymousHistory=primaryHistory.slice();
+  const anonymousTrash=primaryTrash.slice();
+  localScope=next;
+  localStoreReady=null;
+  await initializeLocalStore(next);
+  if(previous==='anonymous' && next!=='anonymous'){
+    const merge=(current,old)=>{
+      const out=current.slice(),seen=new Set(out.map(x=>x?.id||x?.reportId).filter(Boolean));
+      old.forEach(x=>{const k=x?.id||x?.reportId;if(k&&!seen.has(k)){out.push(x);seen.add(k)}});
+      return out;
+    };
+    if(anonymousHistory.length)setHistorySync(merge(primaryHistory,anonymousHistory));
+    if(anonymousTrash.length)setTrashSync(merge(primaryTrash,anonymousTrash));
+  }
+  return localStoreReady;
+}
+function getHistorySync(){return primaryHistory.slice();}
+function getTrashSync(){return primaryTrash.slice();}
+function setHistorySync(list){primaryHistory=sortHistory(list);mirrorLocal(legacyHistoryKey(),primaryHistory);void persistPrimaryCollections();return true;}
+function setTrashSync(list){primaryTrash=(Array.isArray(list)?list:[]).slice(0,100);mirrorLocal(legacyTrashKey(),primaryTrash);void persistPrimaryCollections();return true;}
 async function saveActiveState(state) {
   if (!state) return false;
   try {
     const data = JSON.parse(JSON.stringify(state));
     await idbPut(STORE_ACTIVE, {
-      key: 'current_draft',
+      key: scopedKey('current_draft'),
+      scope: localScope,
       updatedAt: new Date().toISOString(),
       state: data
     });
@@ -366,7 +504,8 @@ async function saveActiveState(state) {
 
 async function loadActiveState() {
   try {
-    const record = await idbGet(STORE_ACTIVE, 'current_draft');
+    await initializeLocalStore(localScope);
+    const record = await idbGet(STORE_ACTIVE, scopedKey('current_draft'));
     return record?.state || null;
   } catch (err) {
     console.error('FieldInspect IndexedDB loadActiveState error:', err);
@@ -377,13 +516,13 @@ async function loadActiveState() {
 async function saveInspectionBackup(id, record) {
   if (!id || !record) return false;
   try {
-    const data = JSON.parse(JSON.stringify(record));
-    await idbPut(STORE_INSPECTIONS, {
-      id,
-      updatedAt: new Date().toISOString(),
-      ...data
-    });
-    return true;
+    await initializeLocalStore(localScope);
+    const next=primaryHistory.slice();
+    const index=next.findIndex(item=>item?.id===id||item?.reportId===record?.reportId);
+    const value=cloneJson(record,null);
+    if(!value)return false;
+    if(index>=0)next[index]=value;else next.unshift(value);
+    return setHistorySync(next);
   } catch (err) {
     console.error('FieldInspect IndexedDB saveInspectionBackup error:', err);
     return false;
@@ -392,7 +531,8 @@ async function saveInspectionBackup(id, record) {
 
 async function loadInspectionBackup(id) {
   try {
-    return await idbGet(STORE_INSPECTIONS, id);
+    await initializeLocalStore(localScope);
+    return primaryHistory.find(item=>item?.id===id||item?.reportId===id)||null;
   } catch (err) {
     console.error('FieldInspect IndexedDB loadInspectionBackup error:', err);
     return null;
@@ -401,7 +541,8 @@ async function loadInspectionBackup(id) {
 
 async function getAllInspectionBackups() {
   try {
-    return await idbGetAll(STORE_INSPECTIONS);
+    await initializeLocalStore(localScope);
+    return primaryHistory.slice();
   } catch (err) {
     console.error('FieldInspect IndexedDB getAllInspectionBackups error:', err);
     return [];
@@ -410,7 +551,8 @@ async function getAllInspectionBackups() {
 
 async function deleteInspectionBackup(id) {
   try {
-    await idbDelete(STORE_INSPECTIONS, id);
+    await initializeLocalStore(localScope);
+    setHistorySync(primaryHistory.filter(item=>item?.id!==id&&item?.reportId!==id));
     return true;
   } catch (err) {
     console.error('FieldInspect IndexedDB deleteInspectionBackup error:', err);
@@ -420,6 +562,13 @@ async function deleteInspectionBackup(id) {
 
 window.FIELDINSPECT_STORAGE = {
   BUCKET,
+  initializeLocalStore,
+  switchLocalScope,
+  getHistorySync,
+  setHistorySync,
+  getTrashSync,
+  setTrashSync,
+  whenReady: () => localStoreReady || initializeLocalStore(localScope),
   uploadPhoto,
   uploadAttachment,
   hydrate,
