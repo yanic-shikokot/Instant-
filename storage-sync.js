@@ -137,7 +137,9 @@ async function hydrate(state) {
   const urls = await signPaths(paths);
   for (const item of (state.items || [])) {
     for (const photo of (item.photos || [])) {
-      if (photo.storagePath && urls.get(photo.storagePath)) photo.data = urls.get(photo.storagePath);
+      if (photo.storagePath && !String(photo.data || '').startsWith('data:') && urls.get(photo.storagePath)) {
+        photo.data = urls.get(photo.storagePath);
+      }
     }
   }
   for (const attachment of (state.attachments || [])) {
@@ -289,6 +291,12 @@ function openDB() {
       }
       if (!db.objectStoreNames.contains(STORE_INSPECTIONS)) {
         db.createObjectStore(STORE_INSPECTIONS, { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains(STORE_HISTORY_PRIMARY)) {
+        db.createObjectStore(STORE_HISTORY_PRIMARY, { keyPath: 'key' });
+      }
+      if (!db.objectStoreNames.contains(STORE_TRASH_PRIMARY)) {
+        db.createObjectStore(STORE_TRASH_PRIMARY, { keyPath: 'key' });
       }
     };
     req.onsuccess = () => {
