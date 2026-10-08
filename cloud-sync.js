@@ -6,10 +6,10 @@ let syncPromise = null;
 const CLOUD_TIMEOUT_MS = 15000;
 
 function withCloudTimeout(promise, label='Cloud request') {
-  return Promise.race([
-    promise,
-    new Promise((_, reject) => setTimeout(() => reject(new Error(label + ' timed out.')), CLOUD_TIMEOUT_MS))
-  ]);
+  return new Promise((resolve,reject)=>{
+    const timer=setTimeout(()=>reject(new Error(label+' timed out.')),CLOUD_TIMEOUT_MS);
+    Promise.resolve(promise).then(value=>{clearTimeout(timer);resolve(value)},error=>{clearTimeout(timer);reject(error)});
+  });
 }
 
 function getSupabase(){
