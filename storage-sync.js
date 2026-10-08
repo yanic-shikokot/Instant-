@@ -149,7 +149,7 @@ async function hydrate(state) {
 }
 
 async function ensureStored(state) {
-  if (!client() || !user()) return state;
+  if (!client() || !user() || typeof navigator !== 'undefined' && !navigator.onLine) return state;
   if (!storageKey(state)) state.meta.storageId = state.meta.reportId || ('INS-' + crypto.randomUUID());
 
   for (const item of (state.items || [])) {
@@ -250,7 +250,7 @@ async function deleteInspectionEvidence(stateOrStorageId) {
 }
 
 async function photoDataUrls(state) {
-  if (!client() || !user()) return state;
+  if (!client() || !user() || typeof navigator !== 'undefined' && !navigator.onLine) return state;
   for (const item of (state.items || [])) {
     for (const photo of (item.photos || [])) {
       if (!photo.data && photo.storagePath) {
