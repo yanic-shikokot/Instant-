@@ -1554,6 +1554,18 @@ function resetMessage(message, kind='error'){
   const el=document.getElementById('resetMessage'); if(!el)return;
   el.textContent=message; el.className='mt-4 rounded-xl px-3 py-2 text-[11px] font-semibold '+(kind==='success'?'bg-emerald-50 text-emerald-700 border border-emerald-200':'bg-rose-50 text-rose-700 border border-rose-200');
 }
+function publishAuthState(user){
+  authUser=user||null;
+  window.FIELDINSPECT_AUTH_USER=authUser;
+  updateAuthUI();
+  const scope=authUser?.id||authUser?.email||'anonymous';
+  if(window.FIELDINSPECT_STORAGE?.switchLocalScope){
+    void window.FIELDINSPECT_STORAGE.switchLocalScope(scope)
+      .then(()=>{try{renderHistory?.();renderTrash?.()}catch(_){};})
+      .catch(error=>console.warn('FieldInspect local account scope switch skipped:',error));
+  }
+  window.dispatchEvent(new CustomEvent('fieldinspect:auth-changed',{detail:{user:authUser}}));
+}
 function updateAuthUI(){
   const btn=document.getElementById('accountButton');
   if(btn){
@@ -1613,7 +1625,7 @@ window.submitAuth=async function(){
       const {data,error}=await supabase.auth.signUp({email,password,options:{data:{full_name:name},emailRedirectTo:authRedirectUrl()||undefined}});
       if(error)throw error;
       if(data.session){
-        authUser=data.session.user; window.FIELDINSPECT_AUTH_USER=authUser; 
+        publishAuthState(data.session.user);
         authMessage('Account created successfully.','success');
         closeAuth();
       }else{
@@ -1622,12 +1634,7 @@ window.submitAuth=async function(){
     }else{
       const {data,error}=await supabase.auth.signInWithPassword({email,password});
       if(error)throw error;
-      authUser=data.user;
-      window.FIELDINSPECT_AUTH_USER=authUser;
-      
-      updateAuthUI();
-      
-      
+      publishAuthState(data.user);
       closeAuth();
       showToast('Signed in successfully.');
     }
@@ -1663,22 +1670,37 @@ window.saveProfile=async function(){
   if(!name){authMessage('Enter your full name.');return}
   const {data,error}=await supabase.auth.updateUser({data:{full_name:name}});
   if(error){authMessage(error.message);return}
-  authUser=data.user; authMessage('Profile updated.','success'); showToast('Profile updated.');
+  publishAuthState(data.user); authMessage('Profile updated.','success'); showToast('Profile updated.');
 };
 window.signOutUser=async function(){
   if(!supabase)return;
   const {error}=await supabase.auth.signOut();
   if(error){authMessage(error.message);return}
-  authUser=null; window.FIELDINSPECT_AUTH_USER=null; closeAuth(); updateAuthUI(); showToast('Signed out.');
+  publishAuthState(null); closeAuth(); showToast('Signed out.');
 };
 window.addEventListener('DOMContentLoaded',async()=>{
   document.getElementById('authSetup')?.classList.toggle('hidden',supabaseReady);
-  if(!supabase){updateAuthUI();return}
-  const {data}=await supabase.auth.getSession();
-  authUser=data.session?.user||null; window.FIELDINSPECT_AUTH_USER=authUser; updateAuthUI(); 
-  supabase.auth.onAuthStateChange((_event,session)=>{
-    authUser=session?.user||null; window.FIELDINSPECT_AUTH_USER=authUser; updateAuthUI(); 
-  });
+  if(!supabase){publishAuthState(null);return}
+
+  // Authentication is deliberately non-blocking. The workspace is already
+  // usable from local storage/IndexedDB; a network/session failure must not
+  // prevent rendering or create an unhandled rejection.
+  try{
+    const {data}=await supabase.auth.getSession();
+    publishAuthState(data?.session?.user||null);
+  }catch(error){
+    console.warn('FieldInspect auth session unavailable; continuing offline:',error);
+    publishAuthState(null);
+  }
+
+  try{
+    supabase.auth.onAuthStateChange((_event,session)=>{
+      publishAuthState(session?.user||null);
+    });
+  }catch(error){
+    console.warn('FieldInspect auth listener unavailable:',error);
+  }
+
   const recovery=location.hash.includes('type=recovery');
   if(recovery){
     document.getElementById('resetModal').classList.remove('hidden');
