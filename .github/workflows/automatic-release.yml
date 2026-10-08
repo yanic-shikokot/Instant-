@@ -4,6 +4,21 @@ on:
   push:
     branches:
       - main
+    paths:
+      - 'index.html'
+      - 'package.json'
+      - 'vite.config.js'
+      - 'electron/**'
+      - 'public/**'
+      - 'src/**'
+      - 'supabase/**'
+      - 'scripts/**'
+      - '*.js'
+      - '*.cjs'
+      - '*.jsx'
+      - '*.ts'
+      - '*.tsx'
+      - 'netlify.toml'
   workflow_dispatch:
 
 permissions:
