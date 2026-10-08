@@ -6,6 +6,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: fieldinspect-release-windows
+  cancel-in-progress: false
+
 jobs:
   release-windows:
     runs-on: windows-2022
