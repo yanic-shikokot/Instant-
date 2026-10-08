@@ -3,6 +3,14 @@ import { createClient } from '@supabase/supabase-js';
 const cfg = window.FIELDINSPECT_AUTH || {};
 let fallbackSupabase = null;
 let syncPromise = null;
+const CLOUD_TIMEOUT_MS = 15000;
+
+function withCloudTimeout(promise, label='Cloud request') {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(label + ' timed out.')), CLOUD_TIMEOUT_MS))
+  ]);
+}
 
 function getSupabase(){
   if(window.FIELDINSPECT_SUPABASE) return window.FIELDINSPECT_SUPABASE;
@@ -232,7 +240,7 @@ async function sync(options={}){
   // the auth module has not yet populated FIELDINSPECT_AUTH_USER.
   if(!user()&&supabase.auth){
     try{
-      const {data}=await supabase.auth.getSession();
+      const {data}=await withCloudTimeout(supabase.auth.getSession(),'Cloud session check');
       if(data?.session?.user){
         window.FIELDINSPECT_AUTH_USER=data.session.user;
       }
@@ -251,13 +259,13 @@ async function sync(options={}){
   syncPromise=(async()=>{
     setCloudStatus('syncing','Synchronizing inspections…');
     try{
-      const pulled=await pull();
+      const pulled=await withCloudTimeout(pull(),'Cloud history download');
 
       // Always process permanent deletions before uploads. A record in the
       // local trash must never be recreated in the cloud.
-      const deleted=await deleteCloudRecords(readTrash());
-      const pushed=await push();
-      const finalPull=await pull();
+      const deleted=await withCloudTimeout(deleteCloudRecords(readTrash()),'Cloud deletion');
+      const pushed=await withCloudTimeout(push(),'Cloud upload');
+      const finalPull=await withCloudTimeout(pull(),'Cloud verification download');
 
       const totalFailures=deleted.failed.length+pushed.failed.length;
       let state='synced';
@@ -311,10 +319,13 @@ async function boot(){
   if(typeof window.saveCurrentToHistory==='function'&&!window.__cloudSaveWrapped){
     const original=window.saveCurrentToHistory;
     window.saveCurrentToHistory=async function(){
+      // The local save is the user-visible success boundary. Cloud sync is
+      // strictly background work and must never delay Save/New while offline.
       const saveResult=await original.apply(this,arguments);
-      if(user()&&saveResult?.saved){
-        const result=await sync();
-        if(!result.ok)safeToast('Inspection saved locally. Cloud sync will retry automatically.');
+      if(user()&&saveResult?.saved&&navigator.onLine){
+        void sync().then(result=>{
+          if(!result.ok)console.info('[FieldInspect] Local save succeeded; cloud sync will retry.');
+        }).catch(error=>console.warn('FieldInspect background cloud sync skipped:',error));
       }
       return saveResult;
     };
