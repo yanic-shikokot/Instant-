@@ -1349,66 +1349,24 @@ window.handleQuickCameraCapture=async function(files){
  'use strict';
  function historyKey(){const u=window.FIELDINSPECT_AUTH_USER||null;return 'fieldinspect-pro-v2:history:'+(u?.id||u?.email||'anonymous')}
  function trashKey(){const u=window.FIELDINSPECT_AUTH_USER||null;return 'fieldinspect-pro-v2:trash:'+(u?.id||u?.email||'anonymous')}
- function readHistory(){try{const v=JSON.parse(localStorage.getItem(historyKey())||'[]');return Array.isArray(v)?v:[]}catch(e){return[]}}
- function writeHistory(v){
-  const key=historyKey();
-  const records=Array.isArray(v)?v.slice(0,100):[];
-  const tryWrite=(list)=>{
-    try{
-      localStorage.setItem(key,JSON.stringify(list));
-      return true;
-    }catch(e){
-      console.error('FieldInspect history write failed:',e);
-      return false;
-    }
-  };
-
-  if(tryWrite(records))return true;
-
-  // Free the duplicated active draft before retrying.
-  try{localStorage.removeItem(STORAGE+':draft')}catch(e){}
-  if(tryWrite(records))return true;
-
-  // If old history consumes the remaining quota, preserve the newest entries.
-  for(let keep=records.length-1;keep>=1;keep--){
-    if(tryWrite(records.slice(0,keep))){
-      toast('Inspection saved. Older history entries were trimmed because browser storage is full.');
-      return true;
-    }
-  }
-
-  // Last-resort compact mode removes only binary evidence from History so the
-  // inspection metadata/findings remain recoverable.
-  const compact=records.map(r=>{
-    const stateCopy=r?.state?JSON.parse(JSON.stringify(r.state)):null;
-    if(stateCopy){
-      stateCopy.attachments=[];
-      if(Array.isArray(stateCopy.items)){
-        stateCopy.items=stateCopy.items.map(item=>({
-          ...item,
-          photos:Array.isArray(item.photos)
-            ? item.photos.map(p=>({caption:p?.caption||'',name:p?.name||'',addedAt:p?.addedAt||''}))
-            : []
-        }));
-      }
-    }
-    return {...r,state:stateCopy,_storageMode:'compact'};
-  });
-  if(tryWrite(compact)){
-    toast('Inspection saved to History. Large photo/document evidence remains in the active draft.');
-    return true;
-  }
-
-  if(records.length&&tryWrite(compact.slice(0,1))){
-    toast('Inspection saved to History. Older history entries were removed because browser storage is full.');
-    return true;
-  }
-
-  toast('Inspection could not be saved. Browser storage is unavailable or full.');
-  return false;
+ function readHistory(){
+  if(window.FIELDINSPECT_STORAGE?.getHistorySync) return window.FIELDINSPECT_STORAGE.getHistorySync();
+  try{const v=JSON.parse(localStorage.getItem(historyKey())||'[]');return Array.isArray(v)?v:[]}catch(e){return[]}
  }
- function readTrash(){try{const v=JSON.parse(localStorage.getItem(trashKey())||'[]');return Array.isArray(v)?v:[]}catch(e){return[]}}
- function writeTrash(v){try{localStorage.setItem(trashKey(),JSON.stringify(v.slice(0,100)));return true}catch(e){toast('Recently deleted could not be saved.');return false}}
+ function writeHistory(v){
+  const records=Array.isArray(v)?v.slice(0,100):[];
+  if(window.FIELDINSPECT_STORAGE?.setHistorySync)return window.FIELDINSPECT_STORAGE.setHistorySync(records);
+  try{localStorage.setItem(historyKey(),JSON.stringify(records));return true}catch(e){console.error('FieldInspect history write failed:',e);return false}
+ }
+ function readTrash(){
+  if(window.FIELDINSPECT_STORAGE?.getTrashSync)return window.FIELDINSPECT_STORAGE.getTrashSync();
+  try{const v=JSON.parse(localStorage.getItem(trashKey())||'[]');return Array.isArray(v)?v:[]}catch(e){return[]}
+ }
+ function writeTrash(v){
+  const records=Array.isArray(v)?v.slice(0,100):[];
+  if(window.FIELDINSPECT_STORAGE?.setTrashSync)return window.FIELDINSPECT_STORAGE.setTrashSync(records);
+  try{localStorage.setItem(trashKey(),JSON.stringify(records));return true}catch(e){toast('Recently deleted could not be saved.');return false}
+ }
  window.readHistory=readHistory;window.writeHistory=writeHistory;
  window.readTrash=readTrash;window.writeTrash=writeTrash;
  function snapshotState(){return JSON.parse(JSON.stringify(state))}
