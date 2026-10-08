@@ -1569,6 +1569,9 @@ function resetMessage(message, kind='error'){
 function publishAuthState(user){
   authUser=user||null;
   window.FIELDINSPECT_AUTH_USER=authUser;
+  if(!authUser&&window.FIELDINSPECT_CLEAR_AUTH_WORKSPACE){
+    window.FIELDINSPECT_CLEAR_AUTH_WORKSPACE();
+  }
   updateAuthUI();
   const scope=authUser?.id||authUser?.email||'anonymous';
   if(window.FIELDINSPECT_STORAGE?.switchLocalScope){
