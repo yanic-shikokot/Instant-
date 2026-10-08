@@ -514,6 +514,18 @@ window.toast=toast;
 window.FIELDINSPECT_GET_STATE=()=>state;
 window.FIELDINSPECT_PERSIST=()=>persist();
 window.FIELDINSPECT_RENDER=()=>renderReport();
+window.FIELDINSPECT_CLEAR_AUTH_WORKSPACE=()=>{
+ try{
+  state=structuredClone(DEFAULT_STATE);
+  state.meta.reportId=makeId();
+  state.meta.storageId=state.meta.reportId;
+  state.meta.inspectionDate=today();
+  bindFields();renderThemes();applyUiTheme();renderDefects();renderReport();setupSignatures();
+  persistNow();
+ }catch(error){
+  console.error('FieldInspect sign-out workspace reset failed:',error);
+ }
+};
 function today(){return new Date().toISOString().slice(0,10)}
 function makeId(){const d=today().replaceAll('-','');return 'REP-'+d+'-'+Math.random().toString(36).slice(2,6).toUpperCase()}
 // Start the core workspace exactly once. Without this bootstrap, the renderer
