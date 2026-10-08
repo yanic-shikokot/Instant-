@@ -10,8 +10,15 @@ permissions:
   contents: write
   actions: write
 
+concurrency:
+  group: fieldinspect-automatic-release
+  cancel-in-progress: false
+
 jobs:
   prepare-release:
+    # The version-bump commit made by this workflow triggers another push event.
+    # Skip that bot-triggered run so one source change produces one release.
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
 
     steps:
