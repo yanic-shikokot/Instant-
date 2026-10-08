@@ -315,10 +315,14 @@ function openDB() {
     };
     req.onsuccess = () => {
       idbInstance = req.result;
+      idbInstance.onversionchange = () => {
+        try { idbInstance.close(); } catch (_) {}
+        idbInstance = null;
+      };
       resolve(idbInstance);
     };
     req.onerror = () => reject(req.error);
-    req.onblocked = () => console.warn('FieldInspect IndexedDB blocked.');
+    req.onblocked = () => reject(new Error('IndexedDB upgrade is blocked by another open FieldInspect window.'));
   });
 }
 
